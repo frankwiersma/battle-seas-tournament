@@ -42,7 +42,9 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
 
   useEffect(() => {
     const newBoard = createEmptyBoard();
-    placedShips?.forEach(ship => {
+    
+    // Apply all placed ships to the board
+    placedShips.forEach(ship => {
       ship.positions.forEach(pos => {
         if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
           newBoard[pos.y][pos.x].hasShip = true;
@@ -50,12 +52,15 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
         }
       });
     });
-    hits?.forEach(hit => {
+
+    // Apply hits after ships
+    hits.forEach(hit => {
       if (newBoard[hit.y] && newBoard[hit.y][hit.x]) {
         newBoard[hit.y][hit.x].isHit = hit.isHit;
         newBoard[hit.y][hit.x].isMiss = !hit.isHit;
       }
     });
+
     setBoard(newBoard);
   }, [placedShips, hits]);
 
@@ -94,26 +99,19 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       return;
     }
 
-    const newBoard = [...board.map(row => [...row])];
     const positions: { x: number; y: number }[] = [];
-
-    const placeCell = (cellX: number, cellY: number) => {
-      newBoard[cellY][cellX].hasShip = true;
-      newBoard[cellY][cellX].shipId = ship.id;
-      positions.push({ x: cellX, y: cellY });
-    };
 
     if (ship.isVertical) {
       for (let i = 0; i < ship.length; i++) {
-        placeCell(x, y + i);
+        positions.push({ x, y: y + i });
       }
     } else {
       for (let i = 0; i < ship.length; i++) {
-        placeCell(x + i, y);
+        positions.push({ x: x + i, y });
       }
     }
 
-    setBoard(newBoard);
+    // Let parent component handle state update
     onShipPlaced?.(ship.id, positions);
   };
 

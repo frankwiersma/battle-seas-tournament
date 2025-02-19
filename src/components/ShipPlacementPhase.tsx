@@ -40,7 +40,7 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
     <div className="space-y-4 animate-fade-in">
       <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
       <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm">
-        {ships.map((ship) => (
+        {ships.filter(ship => !ship.isPlaced).map((ship) => (
           <Ship
             key={ship.id}
             id={ship.id}

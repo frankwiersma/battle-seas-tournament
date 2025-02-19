@@ -9,7 +9,105 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      game_participants: {
+        Row: {
+          board_state: Json | null
+          created_at: string | null
+          game_id: string | null
+          id: string
+          team_id: string | null
+        }
+        Insert: {
+          board_state?: Json | null
+          created_at?: string | null
+          game_id?: string | null
+          id?: string
+          team_id?: string | null
+        }
+        Update: {
+          board_state?: Json | null
+          created_at?: string | null
+          game_id?: string | null
+          id?: string
+          team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_participants_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_participants_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          created_at: string | null
+          current_team_id: string | null
+          id: string
+          status: Database["public"]["Enums"]["game_status"] | null
+          updated_at: string | null
+          winner_team_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_team_id?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["game_status"] | null
+          updated_at?: string | null
+          winner_team_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_team_id?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["game_status"] | null
+          updated_at?: string | null
+          winner_team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_current_team_id_fkey"
+            columns: ["current_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_winner_team_id_fkey"
+            columns: ["winner_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string | null
+          id: string
+          team_letter: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          team_letter: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          team_letter?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +116,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      game_status: "waiting" | "in_progress" | "completed"
     }
     CompositeTypes: {
       [_ in never]: never

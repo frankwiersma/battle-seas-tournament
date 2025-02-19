@@ -1,12 +1,13 @@
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
+import TeamAuth from "@/components/TeamAuth";
 import { toast } from "sonner";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PlacedShip {
   id: string;
@@ -15,6 +16,8 @@ interface PlacedShip {
 
 const Index = () => {
   const isMobile = useIsMobile();
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamLetter, setTeamLetter] = useState<string | null>(null);
   const [ships, setShips] = useState([
     { id: "ship1", length: 3, isVertical: false, isPlaced: false },
     { id: "ship2", length: 2, isVertical: false, isPlaced: false },
@@ -25,6 +28,22 @@ const Index = () => {
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isPlacementPhase, setIsPlacementPhase] = useState(true);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+
+  const handleTeamJoin = (id: string, letter: string) => {
+    setTeamId(id);
+    setTeamLetter(letter);
+    localStorage.setItem('teamId', id);
+    localStorage.setItem('teamLetter', letter);
+  };
+
+  useEffect(() => {
+    // Check for existing team in localStorage
+    const savedTeamId = localStorage.getItem('teamId');
+    const savedTeamLetter = localStorage.getItem('teamLetter');
+    if (savedTeamId && savedTeamLetter) {
+      handleTeamJoin(savedTeamId, savedTeamLetter);
+    }
+  }, []);
 
   const handleRotateShip = (shipId: string) => {
     setShips(ships.map(ship => 
@@ -59,12 +78,21 @@ const Index = () => {
     }, 1500);
   };
 
+  if (!teamId || !teamLetter) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4 flex items-center justify-center">
+        <TeamAuth onTeamJoin={handleTeamJoin} />
+      </div>
+    );
+  }
+
   return (
     <DndProvider backend={isMobile ? TouchBackend : HTML5Backend}>
       <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4">
         <div className="max-w-4xl mx-auto">
           <header className="text-center mb-8 animate-fade-in">
             <h1 className="text-4xl font-bold text-white mb-2">Sea Battle Tournament</h1>
+            <p className="text-white/80">Team {teamLetter}</p>
             <p className="text-white/80">
               {isPlacementPhase 
                 ? "Place your ships and prepare for battle!" 

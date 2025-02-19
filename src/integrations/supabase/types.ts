@@ -94,16 +94,19 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          is_ready: boolean | null
           team_letter: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          is_ready?: boolean | null
           team_letter: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          is_ready?: boolean | null
           team_letter?: string
         }
         Relationships: []

@@ -1,4 +1,3 @@
-
 import React from "react";
 import { useDrop } from "react-dnd";
 import type { ShipDragItem } from "./types";
@@ -32,9 +31,13 @@ export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPl
     }),
   }));
 
-  return (
-    <div ref={drop}>
-      {React.cloneElement(children, { isOver, canDrop })}
-    </div>
-  );
+  // Clone the child element and pass the drag-and-drop props
+  const childWithProps = React.cloneElement(children, {
+    ref: drop,
+    className: `${children.props.className || ''} ${isOver ? 'drop-target' : ''}`,
+    'data-is-over': isOver,
+    'data-can-drop': canDrop,
+  });
+
+  return childWithProps;
 };

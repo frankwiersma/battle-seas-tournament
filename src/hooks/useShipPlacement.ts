@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,29 +29,49 @@ export function useShipPlacement(teamId: string | null) {
     if (!teamId || isInitialLoad) return;
 
     const syncBoardState = async () => {
-      const boardState = {
-        ships: placedShips.map(ship => ({
-          id: ship.id,
-          positions: ship.positions
-        })),
-        hits: [] as Array<{ x: number; y: number; isHit: boolean }>
-      } as unknown as Json;
+      try {
+        const boardState = {
+          ships: placedShips.map(ship => ({
+            id: ship.id,
+            positions: ship.positions
+          })),
+          hits: []
+        };
 
-      const { error } = await supabase
-        .from('game_participants')
-        .upsert({
-          team_id: teamId,
-          board_state: boardState
-        });
+        // Check if record exists first
+        const { data: existingRecord } = await supabase
+          .from('game_participants')
+          .select('id')
+          .eq('team_id', teamId)
+          .single();
 
-      if (error) {
+        if (existingRecord) {
+          // Update existing record
+          const { error: updateError } = await supabase
+            .from('game_participants')
+            .update({ board_state: boardState })
+            .eq('team_id', teamId);
+
+          if (updateError) throw updateError;
+        } else {
+          // Insert new record
+          const { error: insertError } = await supabase
+            .from('game_participants')
+            .insert({
+              team_id: teamId,
+              board_state: boardState
+            });
+
+          if (insertError) throw insertError;
+        }
+      } catch (error: any) {
         console.error('Error syncing board state:', error);
         toast.error("Failed to save ship placement");
       }
     };
 
     syncBoardState();
-  }, [placedShips, teamId, isInitialLoad]);
+  }, [teamId, placedShips, isInitialLoad]);
 
   const loadExistingShips = async () => {
     if (!teamId) return;
@@ -62,23 +81,18 @@ export function useShipPlacement(teamId: string | null) {
         .from('game_participants')
         .select('board_state')
         .eq('team_id', teamId)
-        .single();
+        .maybeSingle();  // Use maybeSingle instead of single
 
-      if (error) {
-        if (error.code !== 'PGRST116') { // No results error
-          console.error('Error loading existing ships:', error);
-          toast.error("Failed to load existing ships");
-        }
+      if (error && error.code !== 'PGRST116') { // No results error
+        console.error('Error loading existing ships:', error);
+        toast.error("Failed to load existing ships");
         return;
       }
 
       if (data?.board_state) {
-        const boardState = data.board_state as unknown as BoardState;
+        const boardState = data.board_state as BoardState;
         if (boardState.ships && boardState.ships.length > 0) {
-          // Update placed ships
           setPlacedShips(boardState.ships);
-          
-          // Update ships state to reflect placed status
           setShips(prevShips => 
             prevShips.map(ship => ({
               ...ship,
@@ -110,23 +124,39 @@ export function useShipPlacement(teamId: string | null) {
       const boardState = {
         ships: [],
         hits: []
-      } as unknown as Json;
+      };
 
       const { error } = await supabase
         .from('game_participants')
-        .upsert({
-          team_id: teamId,
-          board_state: boardState
-        });
+        .update({
+          board_state: boardState,
+          updated_at: new Date().toISOString()
+        })
+        .eq('team_id', teamId);
 
-      if (error) {
-        console.error('Error resetting ships:', error);
-        toast.error("Failed to reset ships");
-      }
-    } catch (error) {
-      console.error('Error in resetShips:', error);
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error resetting ships:', error);
       toast.error("Failed to reset ships");
     }
+  };
+
+  const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    // Remove any existing placement for this ship
+    const existingShips = placedShips.filter(ship => ship.id !== shipId);
+    
+    // Add the new ship placement
+    const newPlacedShips = [...existingShips, { id: shipId, positions }];
+    setPlacedShips(newPlacedShips);
+    
+    // Update ships array to mark this ship as placed
+    setShips(prevShips => 
+      prevShips.map(ship =>
+        ship.id === shipId 
+          ? { ...ship, isPlaced: true }
+          : ship
+      )
+    );
   };
 
   return {
@@ -138,5 +168,6 @@ export function useShipPlacement(teamId: string | null) {
     setIsReady,
     loadExistingShips,
     resetShips,
+    handleShipPlaced,
   };
 }

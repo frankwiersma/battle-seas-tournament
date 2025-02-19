@@ -1,5 +1,4 @@
-
-import React, { useRef, Dispatch, SetStateAction } from "react";
+import React, { useRef, Dispatch, SetStateAction, useEffect } from "react";
 import Ship from "@/components/Ship";
 import GameBoard from "@/components/GameBoard";
 import { Button } from "@/components/ui/button";
@@ -29,26 +28,27 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   const gameBoardRef = useRef<{ resetBoard: () => void }>(null);
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
-    // Update the ships array to mark the placed ship
-    const updatedShips = ships.map(ship =>
-      ship.id === shipId ? { ...ship, isPlaced: true } : ship
+    // Update placedShips - keep all other ships and add/update this one
+    setPlacedShips(prevPlacedShips => {
+      const otherShips = prevPlacedShips.filter(ship => ship.id !== shipId);
+      return [...otherShips, { id: shipId, positions }];
+    });
+    
+    // Update ships array to mark this ship as placed
+    setShips(prevShips => 
+      prevShips.map(ship =>
+        ship.id === shipId 
+          ? { ...ship, isPlaced: true }
+          : ship
+      )
     );
-    setShips(updatedShips);
-
-    // Add the new ship to placedShips without removing existing ones
-    const newPlacedShips = [...placedShips];
-    const existingShipIndex = newPlacedShips.findIndex(ship => ship.id === shipId);
-    
-    if (existingShipIndex !== -1) {
-      // Replace existing ship placement
-      newPlacedShips[existingShipIndex] = { id: shipId, positions };
-    } else {
-      // Add new ship placement
-      newPlacedShips.push({ id: shipId, positions });
-    }
-    
-    setPlacedShips(newPlacedShips);
   };
+
+  // Add this to debug state
+  useEffect(() => {
+    console.log('Ships:', ships);
+    console.log('Placed Ships:', placedShips);
+  }, [ships, placedShips]);
 
   return (
     <div className="space-y-4 animate-fade-in">

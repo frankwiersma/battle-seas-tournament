@@ -6,110 +6,77 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type Database = {
+export interface Database {
   public: {
     Tables: {
-      game_participants: {
-        Row: {
-          board_state: Json
-          created_at: string | null
-          game_id: string | null
-          id: string
-          team_id: string | null
-        }
-        Insert: {
-          board_state?: Json
-          created_at?: string | null
-          game_id?: string | null
-          id?: string
-          team_id?: string | null
-        }
-        Update: {
-          board_state?: Json
-          created_at?: string | null
-          game_id?: string | null
-          id?: string
-          team_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "game_participants_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "game_participants_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       games: {
         Row: {
-          created_at: string | null
-          current_team_id: string | null
           id: string
-          status: Database["public"]["Enums"]["game_status"] | null
-          updated_at: string | null
+          status: 'waiting' | 'in_progress' | 'completed'
+          current_team_id: string | null
           winner_team_id: string | null
+          created_at: string
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
-          current_team_id?: string | null
           id?: string
-          status?: Database["public"]["Enums"]["game_status"] | null
-          updated_at?: string | null
+          status?: 'waiting' | 'in_progress' | 'completed'
+          current_team_id?: string | null
           winner_team_id?: string | null
+          created_at?: string
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
-          current_team_id?: string | null
           id?: string
-          status?: Database["public"]["Enums"]["game_status"] | null
-          updated_at?: string | null
+          status?: 'waiting' | 'in_progress' | 'completed'
+          current_team_id?: string | null
           winner_team_id?: string | null
+          created_at?: string
+          updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "games_current_team_id_fkey"
-            columns: ["current_team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "games_winner_team_id_fkey"
-            columns: ["winner_team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       teams: {
         Row: {
-          created_at: string | null
           id: string
-          is_ready: boolean | null
           team_letter: string
+          is_ready: boolean
+          created_at: string
         }
         Insert: {
-          created_at?: string | null
           id?: string
-          is_ready?: boolean | null
           team_letter: string
+          is_ready?: boolean
+          created_at?: string
         }
         Update: {
-          created_at?: string | null
           id?: string
-          is_ready?: boolean | null
           team_letter?: string
+          is_ready?: boolean
+          created_at?: string
         }
-        Relationships: []
+      }
+      game_participants: {
+        Row: {
+          id: string
+          game_id: string | null
+          team_id: string
+          board_state: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          game_id?: string | null
+          team_id: string
+          board_state?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          game_id?: string | null
+          team_id?: string
+          board_state?: Json
+          created_at?: string
+        }
       }
     }
     Views: {

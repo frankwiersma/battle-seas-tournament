@@ -10,14 +10,27 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
+interface Position {
+  x: number;
+  y: number;
+}
+
 interface PlacedShip {
   id: string;
-  positions: { x: number; y: number }[];
+  positions: Position[];
 }
 
 interface TeamPresence {
   team_id: string;
   ready: boolean;
+}
+
+interface BoardState {
+  ships: Array<{
+    id: string;
+    positions: Array<{ x: number; y: number }>;
+  }>;
+  hits: Array<{ x: number; y: number; isHit: boolean }>;
 }
 
 interface GameState {
@@ -97,14 +110,19 @@ const Index = () => {
       }
 
       if (teams && teams.length >= 2) {
+        const initialBoardState: BoardState = {
+          ships: placedShips.map(ship => ({
+            id: ship.id,
+            positions: ship.positions.map(pos => ({ x: pos.x, y: pos.y }))
+          })),
+          hits: []
+        };
+
         const { error: participantError } = await supabase
           .from('game_participants')
           .insert({
             team_id: teamId,
-            board_state: {
-              ships: placedShips,
-              hits: [],
-            },
+            board_state: initialBoardState
           });
 
         if (participantError) {
@@ -236,8 +254,8 @@ const Index = () => {
         return;
       }
 
-      const opponentState = participants[0].board_state;
-      const isHit = opponentState.ships.some((ship: PlacedShip) =>
+      const opponentState = participants[0].board_state as BoardState;
+      const isHit = opponentState.ships.some(ship =>
         ship.positions.some(pos => pos.x === x && pos.y === y)
       );
 
@@ -247,13 +265,18 @@ const Index = () => {
         myHits: newHits,
       }));
 
+      const updatedBoardState: BoardState = {
+        ships: gameState.myShips.map(ship => ({
+          id: ship.id,
+          positions: ship.positions.map(pos => ({ x: pos.x, y: pos.y }))
+        })),
+        hits: newHits
+      };
+
       const { error: updateError } = await supabase
         .from('game_participants')
         .update({
-          board_state: {
-            ships: gameState.myShips,
-            hits: newHits,
-          },
+          board_state: updatedBoardState
         })
         .eq('team_id', teamId);
 

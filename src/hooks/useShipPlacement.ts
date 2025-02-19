@@ -26,8 +26,8 @@ export function useShipPlacement(teamId: string | null) {
           id: ship.id,
           positions: ship.positions
         })),
-        hits: []
-      } as Json;
+        hits: [] as Array<{ x: number; y: number; isHit: boolean }>
+      } as unknown as Json;
 
       const { error } = await supabase
         .from('game_participants')

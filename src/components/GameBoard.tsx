@@ -1,5 +1,5 @@
 
-import React, { useState, forwardRef, useImperativeHandle, useEffect } from "react";
+import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { Cell as CellComponent } from "./game/Cell";
@@ -41,11 +41,11 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     );
   }
 
-  // Update board whenever placedShips or hits change
-  useEffect(() => {
+  // Update board when placedShips or hits change
+  React.useEffect(() => {
     const newBoard = createEmptyBoard();
     
-    // Apply all placed ships to the board
+    // Apply placed ships
     placedShips.forEach(ship => {
       ship.positions.forEach(pos => {
         if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
@@ -55,7 +55,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       });
     });
 
-    // Apply hits after ships
+    // Apply hits
     hits.forEach(hit => {
       if (newBoard[hit.y] && newBoard[hit.y][hit.x]) {
         newBoard[hit.y][hit.x].isHit = hit.isHit;
@@ -73,6 +73,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   }));
 
   const canPlaceShip = (x: number, y: number, length: number, isVertical: boolean): boolean => {
+    // Check board boundaries
     if (isVertical) {
       if (y + length > 5) return false;
     } else {
@@ -105,7 +106,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     }
 
     const positions: { x: number; y: number }[] = [];
-
+    
     if (ship.isVertical) {
       for (let i = 0; i < ship.length; i++) {
         positions.push({ x, y: y + i });

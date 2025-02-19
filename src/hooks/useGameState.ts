@@ -1,4 +1,3 @@
-
 import { useEffect } from "react";
 import { useShipPlacement } from "./useShipPlacement";
 import { useGamePhase } from "./useGamePhase";
@@ -22,6 +21,8 @@ export function useGameState(teamId: string | null) {
     gameState,
     setGameState,
     checkGameStart,
+    setIsPlacementPhase,
+    setGameStarted,
   } = useGamePhase(teamId, placedShips);
 
   useEffect(() => {
@@ -42,9 +43,12 @@ export function useGameState(teamId: string | null) {
     placedShips,
     setPlacedShips,
     gameState,
+    setGameState,
     setIsReady,
     checkGameStart,
     handleCellClick: handleGameCellClick,
     resetShips,
+    setIsPlacementPhase,
+    setGameStarted,
   };
 }

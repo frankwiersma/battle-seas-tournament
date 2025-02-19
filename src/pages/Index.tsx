@@ -8,6 +8,7 @@ import ShipPlacementPhase from "@/components/ShipPlacementPhase";
 import BattlePhase from "@/components/BattlePhase";
 import { useGameState } from "@/hooks/useGameState";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const isMobile = useIsMobile();
@@ -27,6 +28,9 @@ const Index = () => {
     checkGameStart,
     handleCellClick,
     resetShips,
+    setGameState,
+    setIsPlacementPhase,
+    setGameStarted,
   } = useGameState(teamId);
 
   const handleTeamJoin = (id: string, letter: string) => {
@@ -71,6 +75,52 @@ const Index = () => {
     resetShips();
   };
 
+  const handleResetGame = async () => {
+    if (!teamId) return;
+    
+    try {
+      // Reset teams ready status
+      await supabase
+        .from('teams')
+        .update({ is_ready: false })
+        .eq('id', teamId);
+
+      // Reset game participants
+      await supabase
+        .from('game_participants')
+        .update({ 
+          game_id: null,
+          board_state: { ships: [], hits: [] }
+        })
+        .eq('team_id', teamId);
+
+      // Reset games
+      await supabase
+        .from('games')
+        .update({ 
+          status: 'completed',
+          winner_team_id: null 
+        })
+        .eq('current_team_id', teamId);
+
+      // Reset local state
+      setIsReady(false);
+      resetShips();
+      setGameState({
+        myShips: [],
+        myHits: [],
+        enemyHits: [],
+      });
+      setIsPlacementPhase(true);
+      setGameStarted(false);
+      
+      toast.success("Game reset successfully!");
+    } catch (error) {
+      console.error('Error resetting game:', error);
+      toast.error("Failed to reset game!");
+    }
+  };
+
   if (!teamId || !teamLetter) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4 flex items-center justify-center">
@@ -93,6 +143,12 @@ const Index = () => {
                   ? "Battle Phase - Fire at will!" 
                   : "Waiting for other team..."}
             </p>
+            <button
+              onClick={handleResetGame}
+              className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+            >
+              Reset Game
+            </button>
           </header>
 
           <div className="grid md:grid-cols-2 gap-8">

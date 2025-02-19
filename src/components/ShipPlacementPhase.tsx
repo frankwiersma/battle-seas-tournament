@@ -1,5 +1,5 @@
 
-import React, { useRef } from "react";
+import React, { useRef, Dispatch, SetStateAction } from "react";
 import Ship from "@/components/Ship";
 import GameBoard from "@/components/GameBoard";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ interface ShipPlacementPhaseProps {
   ships: Array<{ id: string; length: number; isVertical: boolean; isPlaced: boolean }>;
   placedShips: PlacedShip[];
   isReady: boolean;
+  setShips: Dispatch<SetStateAction<Array<{ id: string; length: number; isVertical: boolean; isPlaced: boolean }>>>;
+  setPlacedShips: Dispatch<SetStateAction<PlacedShip[]>>;
   onRotateShip: (shipId: string) => void;
   onReadyClick: () => void;
   onResetShips: () => void;
@@ -18,6 +20,8 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   ships,
   placedShips,
   isReady,
+  setShips,
+  setPlacedShips,
   onRotateShip,
   onReadyClick,
   onResetShips,

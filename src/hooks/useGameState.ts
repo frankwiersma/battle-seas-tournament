@@ -9,11 +9,12 @@ export function useGameState(teamId: string | null) {
   const [gameStarted, setGameStarted] = useState(false);
   const [isPlacementPhase, setIsPlacementPhase] = useState(true);
   const [isReady, setIsReady] = useState(false);
-  const [ships, setShips] = useState([
+  const initialShips = [
     { id: "ship1", length: 2, isVertical: false, isPlaced: false },
     { id: "ship2", length: 2, isVertical: false, isPlaced: false },
     { id: "ship3", length: 3, isVertical: false, isPlaced: false },
-  ]);
+  ];
+  const [ships, setShips] = useState(initialShips);
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [gameState, setGameState] = useState<GameState>({
     myShips: [],
@@ -148,6 +149,11 @@ export function useGameState(teamId: string | null) {
     }
   };
 
+  const resetShips = () => {
+    setShips(initialShips);
+    setPlacedShips([]);
+  };
+
   return {
     gameStarted,
     isPlacementPhase,
@@ -160,5 +166,6 @@ export function useGameState(teamId: string | null) {
     setIsReady,
     checkGameStart,
     handleCellClick,
+    resetShips,
   };
 }

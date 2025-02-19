@@ -1,4 +1,3 @@
-
 import React from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -27,6 +26,7 @@ const Index = () => {
     setIsReady,
     checkGameStart,
     handleCellClick,
+    resetShips,
   } = useGameState(teamId);
 
   const handleTeamJoin = (id: string, letter: string) => {
@@ -68,9 +68,7 @@ const Index = () => {
       toast.error("Cannot reset ships after declaring ready!");
       return;
     }
-
-    setShips(ships.map(ship => ({ ...ship, isPlaced: false, isVertical: false })));
-    setPlacedShips([]);
+    resetShips();
   };
 
   if (!teamId || !teamLetter) {

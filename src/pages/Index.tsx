@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
@@ -21,6 +20,12 @@ interface TeamPresence {
   ready: boolean;
 }
 
+interface GameState {
+  myShips: PlacedShip[];
+  myHits: { x: number; y: number; isHit: boolean }[];
+  enemyHits: { x: number; y: number; isHit: boolean }[];
+}
+
 const Index = () => {
   const isMobile = useIsMobile();
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -38,15 +43,40 @@ const Index = () => {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const gameBoardRef = useRef<{ resetBoard: () => void } | null>(null);
 
+  const [gameState, setGameState] = useState<GameState>({
+    myShips: [],
+    myHits: [],
+    enemyHits: [],
+  });
+
   useEffect(() => {
     if (!teamId) return;
 
-    const channel = supabase.channel('team_status');
+    const channel = supabase.channel('game_updates');
     
     channel
       .on('presence', { event: 'sync' }, () => {
         checkGameStart();
       })
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_participants',
+        },
+        (payload: any) => {
+          if (payload.new.team_id !== teamId) {
+            const boardState = payload.new.board_state;
+            if (boardState && boardState.hits) {
+              setGameState(prev => ({
+                ...prev,
+                enemyHits: boardState.hits,
+              }));
+            }
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -67,8 +97,27 @@ const Index = () => {
       }
 
       if (teams && teams.length >= 2) {
+        const { error: participantError } = await supabase
+          .from('game_participants')
+          .insert({
+            team_id: teamId,
+            board_state: {
+              ships: placedShips,
+              hits: [],
+            },
+          });
+
+        if (participantError) {
+          console.error('Error saving board state:', participantError);
+          return;
+        }
+
         setGameStarted(true);
         setIsPlacementPhase(false);
+        setGameState(prev => ({
+          ...prev,
+          myShips: placedShips,
+        }));
         toast.success("Both teams are ready! The battle begins!");
       }
     } catch (error) {
@@ -85,11 +134,9 @@ const Index = () => {
     try {
       if (!teamId) throw new Error("No team ID found");
 
-      // First subscribe to the channel
       const channel = supabase.channel('team_status');
       await channel.subscribe();
 
-      // Then update the team status
       const { error: updateError } = await supabase
         .from('teams')
         .update({ is_ready: true })
@@ -100,7 +147,6 @@ const Index = () => {
       setIsReady(true);
       toast.success("You're ready for battle! Waiting for other team...");
 
-      // Finally track the presence
       const presence: TeamPresence = { team_id: teamId, ready: true };
       await channel.track(presence);
     } catch (error: any) {
@@ -115,11 +161,9 @@ const Index = () => {
       return;
     }
 
-    // Reset ships state
     setShips(ships.map(ship => ({ ...ship, isPlaced: false, isVertical: false })));
     setPlacedShips([]);
     
-    // Reset the game board
     if (gameBoardRef.current) {
       gameBoardRef.current.resetBoard();
     }
@@ -135,7 +179,6 @@ const Index = () => {
   };
 
   useEffect(() => {
-    // Check for existing team in localStorage
     const savedTeamId = localStorage.getItem('teamId');
     const savedTeamLetter = localStorage.getItem('teamLetter');
     if (savedTeamId && savedTeamLetter) {
@@ -155,11 +198,9 @@ const Index = () => {
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
     if (isReady) return;
 
-    // Find the ship that was placed
     const placedShip = ships.find(ship => ship.id === shipId);
     if (!placedShip) return;
 
-    // Update ships state
     setShips(prevShips => 
       prevShips.map(ship => 
         ship.id === shipId 
@@ -168,9 +209,7 @@ const Index = () => {
       )
     );
 
-    // Update placed ships
     setPlacedShips(prev => {
-      // Remove any existing placement for this ship
       const filtered = prev.filter(ship => ship.id !== shipId);
       return [...filtered, { id: shipId, positions }];
     });
@@ -183,15 +222,51 @@ const Index = () => {
     }
   };
 
-  const handleCellClick = (x: number, y: number) => {
-    if (!isPlayerTurn || isPlacementPhase) return;
+  const handleCellClick = async (x: number, y: number) => {
+    if (isPlacementPhase) return;
     
-    setIsPlayerTurn(false);
-    // Simulate opponent's turn
-    setTimeout(() => {
-      setIsPlayerTurn(true);
-      toast.info("Your turn!");
-    }, 1500);
+    try {
+      const { data: participants, error: fetchError } = await supabase
+        .from('game_participants')
+        .select('*')
+        .neq('team_id', teamId);
+
+      if (fetchError || !participants || participants.length === 0) {
+        toast.error("Couldn't find opponent's board!");
+        return;
+      }
+
+      const opponentState = participants[0].board_state;
+      const isHit = opponentState.ships.some((ship: PlacedShip) =>
+        ship.positions.some(pos => pos.x === x && pos.y === y)
+      );
+
+      const newHits = [...gameState.myHits, { x, y, isHit }];
+      setGameState(prev => ({
+        ...prev,
+        myHits: newHits,
+      }));
+
+      const { error: updateError } = await supabase
+        .from('game_participants')
+        .update({
+          board_state: {
+            ships: gameState.myShips,
+            hits: newHits,
+          },
+        })
+        .eq('team_id', teamId);
+
+      if (updateError) {
+        toast.error("Failed to update game state!");
+        return;
+      }
+
+      toast.success(isHit ? "Direct hit!" : "Miss!");
+    } catch (error) {
+      console.error('Error updating game state:', error);
+      toast.error("Failed to process move!");
+    }
   };
 
   if (!teamId || !teamLetter) {
@@ -212,14 +287,12 @@ const Index = () => {
             <p className="text-white/80">
               {isPlacementPhase 
                 ? "Place your ships and prepare for battle!" 
-                : isPlayerTurn 
-                  ? "Your turn - Choose a target!" 
-                  : "Opponent's turn - Stand by..."}
+                : "Battle Phase - Fire at will!"}
             </p>
           </header>
 
           <div className="grid md:grid-cols-2 gap-8">
-            {isPlacementPhase && (
+            {isPlacementPhase ? (
               <div className="space-y-4 animate-fade-in">
                 <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
                 <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm">
@@ -252,21 +325,30 @@ const Index = () => {
                   </Button>
                 </div>
               </div>
+            ) : (
+              <>
+                <div className="space-y-4 animate-fade-in">
+                  <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
+                  <GameBoard
+                    isCurrentPlayer={false}
+                    placementPhase={false}
+                    placedShips={gameState.myShips}
+                    hits={gameState.enemyHits}
+                    showShips={true}
+                  />
+                </div>
+                <div className="space-y-4 animate-fade-in">
+                  <h2 className="text-2xl font-semibold text-white mb-4">Enemy Waters</h2>
+                  <GameBoard
+                    isCurrentPlayer={true}
+                    placementPhase={false}
+                    hits={gameState.myHits}
+                    onCellClick={handleCellClick}
+                    showShips={false}
+                  />
+                </div>
+              </>
             )}
-
-            <div className="animate-fade-in" style={{ animationDelay: "200ms" }}>
-              <h2 className="text-2xl font-semibold text-white mb-4">
-                {isPlacementPhase ? "Battle Grid" : "Enemy Waters"}
-              </h2>
-              <GameBoard
-                ref={gameBoardRef}
-                isCurrentPlayer={isPlayerTurn}
-                onShipPlaced={handleShipPlaced}
-                onCellClick={handleCellClick}
-                placementPhase={isPlacementPhase}
-                placedShips={placedShips}
-              />
-            </div>
           </div>
         </div>
       </div>

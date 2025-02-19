@@ -1,5 +1,4 @@
-
-import React, { useState, forwardRef, useImperativeHandle } from "react";
+import React, { useState, forwardRef, useImperativeHandle, useEffect } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
@@ -25,6 +24,8 @@ interface GameBoardProps {
   onCellClick?: (x: number, y: number) => void;
   placementPhase?: boolean;
   placedShips?: { id: string; positions: { x: number; y: number }[] }[];
+  hits?: { x: number; y: number; isHit: boolean }[];
+  showShips?: boolean;
 }
 
 const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({ 
@@ -32,7 +33,9 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   onShipPlaced, 
   onCellClick, 
   placementPhase = true,
-  placedShips = []
+  placedShips = [],
+  hits = [],
+  showShips = true
 }, ref) => {
   const isMobile = useIsMobile();
   const [board, setBoard] = useState<Cell[][]>(
@@ -44,6 +47,29 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
           .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false }))
       )
   );
+
+  useEffect(() => {
+    const newBoard = Array(5)
+      .fill(null)
+      .map((_, y) =>
+        Array(5)
+          .fill(null)
+          .map((_, x) => {
+            const hasShip = placedShips?.some(ship =>
+              ship.positions.some(pos => pos.x === x && pos.y === y)
+            );
+            const hit = hits?.find(h => h.x === x && h.y === y);
+            return {
+              x,
+              y,
+              hasShip,
+              isHit: hit?.isHit || false,
+              isMiss: hit && !hit.isHit,
+            };
+          })
+      );
+    setBoard(newBoard);
+  }, [placedShips, hits]);
 
   useImperativeHandle(ref, () => ({
     resetBoard: () => {
@@ -59,14 +85,12 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   }));
 
   const canPlaceShip = (x: number, y: number, length: number, isVertical: boolean): boolean => {
-    // Check if ship is within board boundaries
     if (isVertical) {
       if (y + length > 5) return false;
     } else {
       if (x + length > 5) return false;
     }
 
-    // Check if any cell is already occupied or adjacent to another ship
     for (let i = -1; i <= length; i++) {
       for (let j = -1; j <= 1; j++) {
         const checkX = isVertical ? x + j : x + i;
@@ -122,15 +146,6 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     }
 
     onCellClick?.(x, y);
-    const newBoard = [...board];
-    if (cell.hasShip) {
-      newBoard[y][x].isHit = true;
-      toast.success("Direct hit!");
-    } else {
-      newBoard[y][x].isMiss = true;
-      toast.info("Miss!");
-    }
-    setBoard(newBoard);
   };
 
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
@@ -161,7 +176,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       ? "bg-accent/80"
       : cell.isMiss
       ? "bg-muted/20"
-      : cell.hasShip && placementPhase
+      : cell.hasShip && showShips
       ? "bg-accent/50"
       : "bg-secondary/10 hover:bg-secondary/20";
 

@@ -66,35 +66,29 @@ const Index = () => {
   useEffect(() => {
     if (!teamId) return;
 
-    const channel = supabase.channel('game_updates');
-    
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        checkGameStart();
-      })
+    const channel = supabase.channel('game_updates')
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'game_participants',
+          filter: `team_id=neq.${teamId}`,
         },
-        (payload: any) => {
-          if (payload.new.team_id !== teamId) {
-            const boardState = payload.new.board_state;
-            if (boardState && boardState.hits) {
-              setGameState(prev => ({
-                ...prev,
-                enemyHits: boardState.hits,
-              }));
-            }
+        (payload) => {
+          const boardState = payload.new.board_state as unknown as BoardState;
+          if (boardState && boardState.hits) {
+            setGameState(prev => ({
+              ...prev,
+              enemyHits: boardState.hits
+            }));
           }
         }
       )
       .subscribe();
 
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [teamId]);
 
@@ -311,7 +305,9 @@ const Index = () => {
             <p className="text-white/80">
               {isPlacementPhase 
                 ? "Place your ships and prepare for battle!" 
-                : "Battle Phase - Fire at will!"}
+                : gameStarted 
+                  ? "Battle Phase - Fire at will!" 
+                  : "Waiting for other team..."}
             </p>
           </header>
 

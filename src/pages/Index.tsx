@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
 import TeamAuth from "@/components/TeamAuth";
@@ -36,6 +36,7 @@ const Index = () => {
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isPlacementPhase, setIsPlacementPhase] = useState(true);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const gameBoardRef = useRef<{ resetBoard: () => void } | null>(null);
 
   useEffect(() => {
     if (!teamId) return;
@@ -82,22 +83,29 @@ const Index = () => {
     }
 
     try {
-      const { error } = await supabase
+      if (!teamId) throw new Error("No team ID found");
+
+      // First subscribe to the channel
+      const channel = supabase.channel('team_status');
+      await channel.subscribe();
+
+      // Then update the team status
+      const { error: updateError } = await supabase
         .from('teams')
         .update({ is_ready: true })
         .eq('id', teamId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
       setIsReady(true);
       toast.success("You're ready for battle! Waiting for other team...");
 
-      const channel = supabase.channel('team_status');
-      const presence: TeamPresence = { team_id: teamId!, ready: true };
+      // Finally track the presence
+      const presence: TeamPresence = { team_id: teamId, ready: true };
       await channel.track(presence);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating team status:', error);
-      toast.error("Failed to update ready status. Please try again.");
+      toast.error(error.message || "Failed to update ready status. Please try again.");
     }
   };
 
@@ -107,9 +115,15 @@ const Index = () => {
       return;
     }
 
-    setShips(ships.map(ship => ({ ...ship, isPlaced: false })));
+    // Reset ships state
+    setShips(ships.map(ship => ({ ...ship, isPlaced: false, isVertical: false })));
     setPlacedShips([]);
-    setIsPlacementPhase(true);
+    
+    // Reset the game board
+    if (gameBoardRef.current) {
+      gameBoardRef.current.resetBoard();
+    }
+    
     toast.info("Ships reset! Place them again.");
   };
 
@@ -233,6 +247,7 @@ const Index = () => {
                 {isPlacementPhase ? "Battle Grid" : "Enemy Waters"}
               </h2>
               <GameBoard
+                ref={gameBoardRef}
                 isCurrentPlayer={isPlayerTurn}
                 onShipPlaced={handleShipPlaced}
                 onCellClick={handleCellClick}

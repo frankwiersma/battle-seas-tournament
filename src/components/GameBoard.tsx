@@ -1,5 +1,4 @@
-
-import React, { useState } from "react";
+import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
@@ -27,13 +26,13 @@ interface GameBoardProps {
   placedShips?: { id: string; positions: { x: number; y: number }[] }[];
 }
 
-const GameBoard = ({ 
+const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({ 
   isCurrentPlayer = true, 
   onShipPlaced, 
   onCellClick, 
   placementPhase = true,
   placedShips = []
-}: GameBoardProps) => {
+}, ref) => {
   const isMobile = useIsMobile();
   const [board, setBoard] = useState<Cell[][]>(
     Array(5)
@@ -44,6 +43,20 @@ const GameBoard = ({
           .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false }))
       )
   );
+
+  useImperativeHandle(ref, () => ({
+    resetBoard: () => {
+      setBoard(
+        Array(5)
+          .fill(null)
+          .map((_, y) =>
+            Array(5)
+              .fill(null)
+              .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false }))
+          )
+      );
+    }
+  }));
 
   const canPlaceShip = (x: number, y: number, length: number, isVertical: boolean): boolean => {
     // Check if ship is within board boundaries
@@ -176,6 +189,8 @@ const GameBoard = ({
       </div>
     </div>
   );
-};
+});
+
+GameBoard.displayName = "GameBoard";
 
 export default GameBoard;

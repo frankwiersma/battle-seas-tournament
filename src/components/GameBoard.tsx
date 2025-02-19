@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -23,9 +24,16 @@ interface GameBoardProps {
   onShipPlaced?: (shipId: string, positions: { x: number; y: number }[]) => void;
   onCellClick?: (x: number, y: number) => void;
   placementPhase?: boolean;
+  placedShips?: { id: string; positions: { x: number; y: number }[] }[];
 }
 
-const GameBoard = ({ isCurrentPlayer = true, onShipPlaced, onCellClick, placementPhase = true }: GameBoardProps) => {
+const GameBoard = ({ 
+  isCurrentPlayer = true, 
+  onShipPlaced, 
+  onCellClick, 
+  placementPhase = true,
+  placedShips = []
+}: GameBoardProps) => {
   const isMobile = useIsMobile();
   const [board, setBoard] = useState<Cell[][]>(
     Array(5)
@@ -38,21 +46,38 @@ const GameBoard = ({ isCurrentPlayer = true, onShipPlaced, onCellClick, placemen
   );
 
   const canPlaceShip = (x: number, y: number, length: number, isVertical: boolean): boolean => {
+    // Check if ship is within board boundaries
     if (isVertical) {
       if (y + length > 5) return false;
-      for (let i = 0; i < length; i++) {
-        if (board[y + i][x].hasShip) return false;
-      }
     } else {
       if (x + length > 5) return false;
-      for (let i = 0; i < length; i++) {
-        if (board[y][x + i].hasShip) return false;
+    }
+
+    // Check if any cell is already occupied or adjacent to another ship
+    for (let i = -1; i <= length; i++) {
+      for (let j = -1; j <= 1; j++) {
+        const checkX = isVertical ? x + j : x + i;
+        const checkY = isVertical ? y + i : y + j;
+
+        if (
+          checkX >= 0 && checkX < 5 &&
+          checkY >= 0 && checkY < 5 &&
+          board[checkY][checkX].hasShip
+        ) {
+          return false;
+        }
       }
     }
+
     return true;
   };
 
   const placeShip = (x: number, y: number, ship: ShipDragItem) => {
+    if (!canPlaceShip(x, y, ship.length, ship.isVertical)) {
+      toast.error("Cannot place ship here!");
+      return;
+    }
+
     const newBoard = [...board];
     const positions: { x: number; y: number }[] = [];
 
@@ -123,6 +148,8 @@ const GameBoard = ({ isCurrentPlayer = true, onShipPlaced, onCellClick, placemen
       ? "bg-accent/80"
       : cell.isMiss
       ? "bg-muted/20"
+      : cell.hasShip && placementPhase
+      ? "bg-accent/50"
       : "bg-secondary/10 hover:bg-secondary/20";
 
     if (isOver && canDrop) {

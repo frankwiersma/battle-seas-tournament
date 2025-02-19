@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
@@ -19,10 +20,9 @@ const Index = () => {
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLetter, setTeamLetter] = useState<string | null>(null);
   const [ships, setShips] = useState([
-    { id: "ship1", length: 3, isVertical: false, isPlaced: false },
-    { id: "ship2", length: 2, isVertical: false, isPlaced: false },
-    { id: "ship3", length: 2, isVertical: false, isPlaced: false },
-    { id: "ship4", length: 1, isVertical: false, isPlaced: false },
+    { id: "ship1", length: 3, isVertical: false, isPlaced: false }, // Battleship
+    { id: "ship2", length: 3, isVertical: false, isPlaced: false }, // Cruiser
+    { id: "ship3", length: 2, isVertical: false, isPlaced: false }, // Destroyer
   ]);
   
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
@@ -54,16 +54,23 @@ const Index = () => {
   };
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    // Update the ships state to mark the ship as placed
     setShips(ships.map(ship => 
       ship.id === shipId 
         ? { ...ship, isPlaced: true }
         : ship
     ));
-    setPlacedShips([...placedShips, { id: shipId, positions }]);
 
-    if (placedShips.length + 1 === ships.length) {
+    // Add the placed ship to placedShips array
+    setPlacedShips(prev => [...prev, { id: shipId, positions }]);
+
+    // Check if all ships are placed
+    const updatedPlacedCount = placedShips.length + 1;
+    if (updatedPlacedCount === ships.length) {
       toast.success("All ships placed! Ready for battle!");
       setIsPlacementPhase(false);
+    } else {
+      toast.success("Ship placed successfully!");
     }
   };
 
@@ -130,6 +137,7 @@ const Index = () => {
                 onShipPlaced={handleShipPlaced}
                 onCellClick={handleCellClick}
                 placementPhase={isPlacementPhase}
+                placedShips={placedShips}
               />
             </div>
           </div>

@@ -15,10 +15,19 @@ export function useShipPlacement(teamId: string | null) {
   const [ships, setShips] = useState(initialShips);
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Sync with database whenever placedShips changes
+  // Load existing ships on initial mount
   useEffect(() => {
-    if (!teamId || placedShips.length === 0) return;
+    if (teamId && isInitialLoad) {
+      loadExistingShips();
+      setIsInitialLoad(false);
+    }
+  }, [teamId, isInitialLoad]);
+
+  // Sync with database only when placedShips changes and it's not the initial load
+  useEffect(() => {
+    if (!teamId || isInitialLoad) return;
 
     const syncBoardState = async () => {
       const boardState = {
@@ -38,48 +47,86 @@ export function useShipPlacement(teamId: string | null) {
 
       if (error) {
         console.error('Error syncing board state:', error);
+        toast.error("Failed to save ship placement");
       }
     };
 
     syncBoardState();
-  }, [placedShips, teamId]);
+  }, [placedShips, teamId, isInitialLoad]);
 
   const loadExistingShips = async () => {
     if (!teamId) return;
 
-    const { data, error } = await supabase
-      .from('game_participants')
-      .select('board_state')
-      .eq('team_id', teamId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('game_participants')
+        .select('board_state')
+        .eq('team_id', teamId)
+        .single();
 
-    if (error) {
-      if (error.code !== 'PGRST116') { // No results error
-        console.error('Error loading existing ships:', error);
+      if (error) {
+        if (error.code !== 'PGRST116') { // No results error
+          console.error('Error loading existing ships:', error);
+          toast.error("Failed to load existing ships");
+        }
+        return;
       }
-      return;
-    }
 
-    if (data && data.board_state) {
-      const boardState = data.board_state as unknown as BoardState;
-      if (boardState.ships && boardState.ships.length > 0) {
-        setPlacedShips(boardState.ships.map(ship => ({
-          id: ship.id,
-          positions: ship.positions
-        })));
-        setShips(ships.map(ship => ({
-          ...ship,
-          isPlaced: boardState.ships.some(s => s.id === ship.id)
-        })));
-        setIsReady(true);
+      if (data?.board_state) {
+        const boardState = data.board_state as unknown as BoardState;
+        if (boardState.ships && boardState.ships.length > 0) {
+          // Update placed ships
+          setPlacedShips(boardState.ships);
+          
+          // Update ships state to reflect placed status
+          setShips(prevShips => 
+            prevShips.map(ship => ({
+              ...ship,
+              isPlaced: boardState.ships.some(s => s.id === ship.id)
+            }))
+          );
+          
+          if (boardState.ships.length === initialShips.length) {
+            setIsReady(true);
+          }
+        }
       }
+    } catch (error) {
+      console.error('Error in loadExistingShips:', error);
+      toast.error("Failed to load ship placements");
     }
   };
 
-  const resetShips = () => {
-    setShips(initialShips);
-    setPlacedShips([]);
-    setIsReady(false);
+  const resetShips = async () => {
+    if (!teamId) return;
+
+    try {
+      // Reset local state
+      setShips(initialShips);
+      setPlacedShips([]);
+      setIsReady(false);
+
+      // Reset database state
+      const boardState = {
+        ships: [],
+        hits: []
+      } as unknown as Json;
+
+      const { error } = await supabase
+        .from('game_participants')
+        .upsert({
+          team_id: teamId,
+          board_state: boardState
+        });
+
+      if (error) {
+        console.error('Error resetting ships:', error);
+        toast.error("Failed to reset ships");
+      }
+    } catch (error) {
+      console.error('Error in resetShips:', error);
+      toast.error("Failed to reset ships");
+    }
   };
 
   return {

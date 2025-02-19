@@ -35,12 +35,13 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
         y,
         hasShip: false,
         isHit: false,
-        isMiss: false
+        isMiss: false,
+        shipId: undefined
       }))
     );
   }
 
-  // Update board whenever placedShips or hits change
+  // Update board whenever placedShips change
   useEffect(() => {
     const newBoard = createEmptyBoard();
     
@@ -115,6 +116,17 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       }
     }
 
+    // Update local board state immediately
+    const newBoard = [...board];
+    positions.forEach(pos => {
+      if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
+        newBoard[pos.y][pos.x].hasShip = true;
+        newBoard[pos.y][pos.x].shipId = ship.id;
+      }
+    });
+    setBoard(newBoard);
+
+    // Notify parent component
     onShipPlaced?.(ship.id, positions);
   };
 
@@ -130,7 +142,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     onCellClick?.(x, y);
   };
 
-  const renderGrid = (isOver = false, canDrop = false) => (
+  const renderBoard = (isOver?: boolean, canDrop?: boolean) => (
     <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
       {board.map((row) => 
         row.map((cell) => (
@@ -151,10 +163,10 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     <div className="p-4">
       {placementPhase ? (
         <ShipPlacement onPlaceShip={placeShip} canPlaceShip={canPlaceShip}>
-          {renderGrid()}
+          {renderBoard()}
         </ShipPlacement>
       ) : (
-        renderGrid()
+        renderBoard()
       )}
     </div>
   );

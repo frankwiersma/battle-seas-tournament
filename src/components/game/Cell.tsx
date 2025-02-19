@@ -50,7 +50,6 @@ export const Cell: React.FC<CellProps> = ({
     <div
       data-coords={`${x},${y}`}
       className={cellClasses.join(" ")}
-      style={{ animationDelay: `${x * 50 + y * 50}ms` }}
       onClick={onClick}
     >
       {hasShip && showShips && (

@@ -138,6 +138,8 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
             {...cell}
             showShips={showShips}
             onClick={() => handleCellClick(cell.x, cell.y)}
+            isOver={false}
+            canDrop={false}
           />
         ))
       )}

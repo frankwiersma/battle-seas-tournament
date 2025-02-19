@@ -1,4 +1,3 @@
-
 import React, { useState, forwardRef, useImperativeHandle, useEffect } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";

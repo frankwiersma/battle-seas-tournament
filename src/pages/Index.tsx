@@ -9,6 +9,7 @@ import { TouchBackend } from "react-dnd-touch-backend";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import type { Json } from "@/integrations/supabase/types";
 
 interface Position {
   x: number;
@@ -110,13 +111,13 @@ const Index = () => {
       }
 
       if (teams && teams.length >= 2) {
-        const initialBoardState: BoardState = {
+        const initialBoardState = {
           ships: placedShips.map(ship => ({
             id: ship.id,
             positions: ship.positions.map(pos => ({ x: pos.x, y: pos.y }))
           })),
           hits: []
-        };
+        } as Json;
 
         const { error: participantError } = await supabase
           .from('game_participants')
@@ -254,7 +255,7 @@ const Index = () => {
         return;
       }
 
-      const opponentState = participants[0].board_state as BoardState;
+      const opponentState = participants[0].board_state as unknown as BoardState;
       const isHit = opponentState.ships.some(ship =>
         ship.positions.some(pos => pos.x === x && pos.y === y)
       );
@@ -265,13 +266,13 @@ const Index = () => {
         myHits: newHits,
       }));
 
-      const updatedBoardState: BoardState = {
+      const updatedBoardState = {
         ships: gameState.myShips.map(ship => ({
           id: ship.id,
           positions: ship.positions.map(pos => ({ x: pos.x, y: pos.y }))
         })),
         hits: newHits
-      };
+      } as Json;
 
       const { error: updateError } = await supabase
         .from('game_participants')

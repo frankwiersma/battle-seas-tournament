@@ -11,21 +11,21 @@ export type Database = {
     Tables: {
       game_participants: {
         Row: {
-          board_state: Json | null
+          board_state: Json
           created_at: string | null
           game_id: string | null
           id: string
           team_id: string | null
         }
         Insert: {
-          board_state?: Json | null
+          board_state?: Json
           created_at?: string | null
           game_id?: string | null
           id?: string
           team_id?: string | null
         }
         Update: {
-          board_state?: Json | null
+          board_state?: Json
           created_at?: string | null
           game_id?: string | null
           id?: string

@@ -6,9 +6,10 @@ import type { ShipDragItem } from "./types";
 interface ShipPlacementProps {
   onPlaceShip: (x: number, y: number, ship: ShipDragItem) => void;
   canPlaceShip: (x: number, y: number, length: number, isVertical: boolean) => boolean;
+  children: React.ReactNode;
 }
 
-export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPlaceShip }) => {
+export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPlaceShip, children }) => {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: "SHIP",
     canDrop: (item: ShipDragItem, monitor) => {
@@ -31,5 +32,14 @@ export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPl
     }),
   }));
 
-  return { drop, isOver, canDrop };
+  return (
+    <div ref={drop}>
+      {React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child, { isOver, canDrop });
+        }
+        return child;
+      })}
+    </div>
+  );
 };

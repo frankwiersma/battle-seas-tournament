@@ -129,27 +129,30 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     onCellClick?.(x, y);
   };
 
-  const { drop, isOver, canDrop } = ShipPlacement({
-    onPlaceShip: placeShip,
-    canPlaceShip
-  });
+  const gridContent = (
+    <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
+      {board.map((row) => 
+        row.map((cell) => (
+          <CellComponent
+            key={`${cell.x}-${cell.y}`}
+            {...cell}
+            showShips={showShips}
+            onClick={() => handleCellClick(cell.x, cell.y)}
+          />
+        ))
+      )}
+    </div>
+  );
 
   return (
-    <div className="p-4" ref={drop}>
-      <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
-        {board.map((row) => 
-          row.map((cell) => (
-            <CellComponent
-              key={`${cell.x}-${cell.y}`}
-              {...cell}
-              showShips={showShips}
-              onClick={() => handleCellClick(cell.x, cell.y)}
-              isOver={isOver}
-              canDrop={canDrop}
-            />
-          ))
-        )}
-      </div>
+    <div className="p-4">
+      {placementPhase ? (
+        <ShipPlacement onPlaceShip={placeShip} canPlaceShip={canPlaceShip}>
+          {gridContent}
+        </ShipPlacement>
+      ) : (
+        gridContent
+      )}
     </div>
   );
 });

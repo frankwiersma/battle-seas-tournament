@@ -1,6 +1,7 @@
 
-import React from "react";
+import React, { useRef } from "react";
 import Ship from "@/components/Ship";
+import GameBoard from "@/components/GameBoard";
 import { Button } from "@/components/ui/button";
 import type { PlacedShip } from "@/types/game";
 
@@ -21,6 +22,16 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   onReadyClick,
   onResetShips,
 }) => {
+  const gameBoardRef = useRef<{ resetBoard: () => void }>(null);
+
+  const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    const updatedShips = ships.map(ship =>
+      ship.id === shipId ? { ...ship, isPlaced: true } : ship
+    );
+    setShips(updatedShips);
+    setPlacedShips([...placedShips, { id: shipId, positions }]);
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
@@ -36,6 +47,13 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
           />
         ))}
       </div>
+      <GameBoard
+        ref={gameBoardRef}
+        placementPhase={true}
+        onShipPlaced={handleShipPlaced}
+        placedShips={placedShips}
+        showShips={true}
+      />
       <div className="flex gap-4">
         <Button 
           onClick={onReadyClick}
@@ -45,7 +63,10 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
           {isReady ? "Waiting for other team..." : "Ready for Battle"}
         </Button>
         <Button 
-          onClick={onResetShips}
+          onClick={() => {
+            onResetShips();
+            gameBoardRef.current?.resetBoard();
+          }}
           variant="outline"
           disabled={isReady}
           className="w-full"

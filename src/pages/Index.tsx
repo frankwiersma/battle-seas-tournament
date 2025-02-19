@@ -8,7 +8,7 @@ import TeamAuth from "@/components/TeamAuth";
 import ShipPlacementPhase from "@/components/ShipPlacementPhase";
 import BattlePhase from "@/components/BattlePhase";
 import { useGameState } from "@/hooks/useGameState";
-import { toast } from "sonner"; // Add toast import
+import { toast } from "sonner";
 
 const Index = () => {
   const isMobile = useIsMobile();
@@ -22,7 +22,7 @@ const Index = () => {
     ships,
     setShips,
     placedShips,
-    setPlacedShips, // Add setPlacedShips to destructured values
+    setPlacedShips,
     gameState,
     setIsReady,
     checkGameStart,
@@ -102,6 +102,8 @@ const Index = () => {
               <ShipPlacementPhase
                 ships={ships}
                 placedShips={placedShips}
+                setShips={setShips}
+                setPlacedShips={setPlacedShips}
                 isReady={isReady}
                 onRotateShip={handleRotateShip}
                 onReadyClick={handleReadyClick}

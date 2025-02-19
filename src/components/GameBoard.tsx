@@ -1,8 +1,5 @@
-
 import React, { useState } from "react";
-import { DndProvider, useDrop } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import { TouchBackend } from "react-dnd-touch-backend";
+import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
@@ -146,13 +143,11 @@ const GameBoard = ({ isCurrentPlayer = true, onShipPlaced, onCellClick, placemen
   };
 
   return (
-    <DndProvider backend={isMobile ? TouchBackend : HTML5Backend}>
-      <div className="p-4" ref={drop}>
-        <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
-          {board.map((row) => row.map((cell) => renderCell(cell)))}
-        </div>
+    <div className="p-4" ref={drop}>
+      <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
+        {board.map((row) => row.map((cell) => renderCell(cell)))}
       </div>
-    </DndProvider>
+    </div>
   );
 };
 

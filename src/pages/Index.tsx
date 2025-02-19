@@ -3,6 +3,10 @@ import React, { useState } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
 import { toast } from "sonner";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
+import { TouchBackend } from "react-dnd-touch-backend";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface PlacedShip {
   id: string;
@@ -10,6 +14,7 @@ interface PlacedShip {
 }
 
 const Index = () => {
+  const isMobile = useIsMobile();
   const [ships, setShips] = useState([
     { id: "ship1", length: 3, isVertical: false, isPlaced: false },
     { id: "ship2", length: 2, isVertical: false, isPlaced: false },
@@ -55,52 +60,54 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4">
-      <div className="max-w-4xl mx-auto">
-        <header className="text-center mb-8 animate-fade-in">
-          <h1 className="text-4xl font-bold text-white mb-2">Sea Battle Tournament</h1>
-          <p className="text-white/80">
-            {isPlacementPhase 
-              ? "Place your ships and prepare for battle!" 
-              : isPlayerTurn 
-                ? "Your turn - Choose a target!" 
-                : "Opponent's turn - Stand by..."}
-          </p>
-        </header>
+    <DndProvider backend={isMobile ? TouchBackend : HTML5Backend}>
+      <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4">
+        <div className="max-w-4xl mx-auto">
+          <header className="text-center mb-8 animate-fade-in">
+            <h1 className="text-4xl font-bold text-white mb-2">Sea Battle Tournament</h1>
+            <p className="text-white/80">
+              {isPlacementPhase 
+                ? "Place your ships and prepare for battle!" 
+                : isPlayerTurn 
+                  ? "Your turn - Choose a target!" 
+                  : "Opponent's turn - Stand by..."}
+            </p>
+          </header>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {isPlacementPhase && (
-            <div className="space-y-4 animate-fade-in">
-              <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
-              <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm">
-                {ships.map((ship) => (
-                  <Ship
-                    key={ship.id}
-                    id={ship.id}
-                    length={ship.length}
-                    isVertical={ship.isVertical}
-                    isPlaced={ship.isPlaced}
-                    onRotate={() => handleRotateShip(ship.id)}
-                  />
-                ))}
+          <div className="grid md:grid-cols-2 gap-8">
+            {isPlacementPhase && (
+              <div className="space-y-4 animate-fade-in">
+                <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
+                <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm">
+                  {ships.map((ship) => (
+                    <Ship
+                      key={ship.id}
+                      id={ship.id}
+                      length={ship.length}
+                      isVertical={ship.isVertical}
+                      isPlaced={ship.isPlaced}
+                      onRotate={() => handleRotateShip(ship.id)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="animate-fade-in" style={{ animationDelay: "200ms" }}>
-            <h2 className="text-2xl font-semibold text-white mb-4">
-              {isPlacementPhase ? "Battle Grid" : "Enemy Waters"}
-            </h2>
-            <GameBoard
-              isCurrentPlayer={isPlayerTurn}
-              onShipPlaced={handleShipPlaced}
-              onCellClick={handleCellClick}
-              placementPhase={isPlacementPhase}
-            />
+            <div className="animate-fade-in" style={{ animationDelay: "200ms" }}>
+              <h2 className="text-2xl font-semibold text-white mb-4">
+                {isPlacementPhase ? "Battle Grid" : "Enemy Waters"}
+              </h2>
+              <GameBoard
+                isCurrentPlayer={isPlayerTurn}
+                onShipPlaced={handleShipPlaced}
+                onCellClick={handleCellClick}
+                placementPhase={isPlacementPhase}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </DndProvider>
   );
 };
 

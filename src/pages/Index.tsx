@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
@@ -9,6 +8,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
 interface PlacedShip {
   id: string;
@@ -19,6 +19,8 @@ const Index = () => {
   const isMobile = useIsMobile();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLetter, setTeamLetter] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
   const [ships, setShips] = useState([
     { id: "ship1", length: 3, isVertical: false, isPlaced: false }, // Battleship
     { id: "ship2", length: 3, isVertical: false, isPlaced: false }, // Cruiser
@@ -28,6 +30,75 @@ const Index = () => {
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isPlacementPhase, setIsPlacementPhase] = useState(true);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+
+  useEffect(() => {
+    // Subscribe to team status changes
+    const channel = supabase.channel('team_status')
+      .on('presence', { event: 'sync' }, () => {
+        checkGameStart();
+      })
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [teamId]);
+
+  const checkGameStart = async () => {
+    const { data: teams, error } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('is_ready', true);
+
+    if (error) {
+      console.error('Error checking team status:', error);
+      return;
+    }
+
+    if (teams.length >= 2) {
+      setGameStarted(true);
+      setIsPlacementPhase(false);
+      toast.success("Both teams are ready! The battle begins!");
+    }
+  };
+
+  const handleReadyClick = async () => {
+    if (placedShips.length !== ships.length) {
+      toast.error("Place all your ships before declaring ready!");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('teams')
+        .update({ is_ready: true })
+        .eq('id', teamId);
+
+      if (error) throw error;
+
+      setIsReady(true);
+      toast.success("You're ready for battle! Waiting for other team...");
+
+      // Update presence state
+      const channel = supabase.channel('team_status');
+      await channel.track({ team_id: teamId, ready: true });
+    } catch (error) {
+      console.error('Error updating team status:', error);
+      toast.error("Failed to update ready status. Please try again.");
+    }
+  };
+
+  const handleResetShips = () => {
+    if (isReady) {
+      toast.error("Cannot reset ships after declaring ready!");
+      return;
+    }
+
+    setShips(ships.map(ship => ({ ...ship, isPlaced: false })));
+    setPlacedShips([]);
+    setIsPlacementPhase(true);
+    toast.info("Ships reset! Place them again.");
+  };
 
   const handleTeamJoin = (id: string, letter: string) => {
     setTeamId(id);
@@ -46,6 +117,7 @@ const Index = () => {
   }, []);
 
   const handleRotateShip = (shipId: string) => {
+    if (isReady) return;
     setShips(ships.map(ship => 
       ship.id === shipId 
         ? { ...ship, isVertical: !ship.isVertical }
@@ -54,6 +126,8 @@ const Index = () => {
   };
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    if (isReady) return;
+
     // Update the ships state to mark the ship as placed
     setShips(ships.map(ship => 
       ship.id === shipId 
@@ -67,8 +141,7 @@ const Index = () => {
     // Check if all ships are placed
     const updatedPlacedCount = placedShips.length + 1;
     if (updatedPlacedCount === ships.length) {
-      toast.success("All ships placed! Ready for battle!");
-      setIsPlacementPhase(false);
+      toast.success("All ships placed! Click 'Ready for Battle' when you're ready!");
     } else {
       toast.success("Ship placed successfully!");
     }
@@ -124,6 +197,23 @@ const Index = () => {
                       onRotate={() => handleRotateShip(ship.id)}
                     />
                   ))}
+                </div>
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={handleReadyClick}
+                    disabled={placedShips.length !== ships.length || isReady}
+                    className="w-full"
+                  >
+                    {isReady ? "Waiting for other team..." : "Ready for Battle"}
+                  </Button>
+                  <Button 
+                    onClick={handleResetShips}
+                    variant="outline"
+                    disabled={isReady}
+                    className="w-full"
+                  >
+                    Reset Ships
+                  </Button>
                 </div>
               </div>
             )}

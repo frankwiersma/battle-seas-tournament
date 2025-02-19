@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import GameBoard from "@/components/GameBoard";
 import Ship from "@/components/Ship";
@@ -15,6 +16,11 @@ interface PlacedShip {
   positions: { x: number; y: number }[];
 }
 
+interface TeamPresence {
+  team_id: string;
+  ready: boolean;
+}
+
 const Index = () => {
   const isMobile = useIsMobile();
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -22,9 +28,9 @@ const Index = () => {
   const [isReady, setIsReady] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [ships, setShips] = useState([
-    { id: "ship1", length: 3, isVertical: false, isPlaced: false }, // Battleship
-    { id: "ship2", length: 3, isVertical: false, isPlaced: false }, // Cruiser
-    { id: "ship3", length: 2, isVertical: false, isPlaced: false }, // Destroyer
+    { id: "ship1", length: 3, isVertical: false, isPlaced: false },
+    { id: "ship2", length: 3, isVertical: false, isPlaced: false },
+    { id: "ship3", length: 2, isVertical: false, isPlaced: false },
   ]);
   
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
@@ -32,8 +38,11 @@ const Index = () => {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
 
   useEffect(() => {
-    // Subscribe to team status changes
-    const channel = supabase.channel('team_status')
+    if (!teamId) return;
+
+    const channel = supabase.channel('team_status');
+    
+    channel
       .on('presence', { event: 'sync' }, () => {
         checkGameStart();
       })
@@ -45,20 +54,24 @@ const Index = () => {
   }, [teamId]);
 
   const checkGameStart = async () => {
-    const { data: teams, error } = await supabase
-      .from('teams')
-      .select('*')
-      .eq('is_ready', true);
+    try {
+      const { data: teams, error } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('is_ready', true);
 
-    if (error) {
-      console.error('Error checking team status:', error);
-      return;
-    }
+      if (error) {
+        console.error('Error checking team status:', error);
+        return;
+      }
 
-    if (teams.length >= 2) {
-      setGameStarted(true);
-      setIsPlacementPhase(false);
-      toast.success("Both teams are ready! The battle begins!");
+      if (teams && teams.length >= 2) {
+        setGameStarted(true);
+        setIsPlacementPhase(false);
+        toast.success("Both teams are ready! The battle begins!");
+      }
+    } catch (error) {
+      console.error('Error checking game start:', error);
     }
   };
 
@@ -79,9 +92,9 @@ const Index = () => {
       setIsReady(true);
       toast.success("You're ready for battle! Waiting for other team...");
 
-      // Update presence state
       const channel = supabase.channel('team_status');
-      await channel.track({ team_id: teamId, ready: true });
+      const presence: TeamPresence = { team_id: teamId!, ready: true };
+      await channel.track(presence);
     } catch (error) {
       console.error('Error updating team status:', error);
       toast.error("Failed to update ready status. Please try again.");
@@ -128,17 +141,14 @@ const Index = () => {
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
     if (isReady) return;
 
-    // Update the ships state to mark the ship as placed
     setShips(ships.map(ship => 
       ship.id === shipId 
         ? { ...ship, isPlaced: true }
         : ship
     ));
 
-    // Add the placed ship to placedShips array
     setPlacedShips(prev => [...prev, { id: shipId, positions }]);
 
-    // Check if all ships are placed
     const updatedPlacedCount = placedShips.length + 1;
     if (updatedPlacedCount === ships.length) {
       toast.success("All ships placed! Click 'Ready for Battle' when you're ready!");

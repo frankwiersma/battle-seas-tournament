@@ -35,19 +35,9 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
     );
     setShips(updatedShips);
 
-    // Add the new ship to placedShips without removing existing ones
-    const newPlacedShips = [...placedShips];
-    const existingShipIndex = newPlacedShips.findIndex(ship => ship.id === shipId);
-    
-    if (existingShipIndex !== -1) {
-      // Replace existing ship placement
-      newPlacedShips[existingShipIndex] = { id: shipId, positions };
-    } else {
-      // Add new ship placement
-      newPlacedShips.push({ id: shipId, positions });
-    }
-    
-    setPlacedShips(newPlacedShips);
+    // Remove any existing placement for this ship and add the new placement
+    const filteredShips = placedShips.filter(ship => ship.id !== shipId);
+    setPlacedShips([...filteredShips, { id: shipId, positions }]);
   };
 
   return (

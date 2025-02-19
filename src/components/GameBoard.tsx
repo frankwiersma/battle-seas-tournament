@@ -41,7 +41,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     );
   }
 
-  // Update board whenever placedShips change
+  // Update board whenever placedShips or hits change
   useEffect(() => {
     const newBoard = createEmptyBoard();
     
@@ -116,16 +116,6 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       }
     }
 
-    // Update local board state immediately
-    const newBoard = [...board];
-    positions.forEach(pos => {
-      if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
-        newBoard[pos.y][pos.x].hasShip = true;
-        newBoard[pos.y][pos.x].shipId = ship.id;
-      }
-    });
-    setBoard(newBoard);
-
     // Notify parent component
     onShipPlaced?.(ship.id, positions);
   };
@@ -142,23 +132,6 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     onCellClick?.(x, y);
   };
 
-  const renderBoard = (isOver?: boolean, canDrop?: boolean) => (
-    <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
-      {board.map((row) => 
-        row.map((cell) => (
-          <CellComponent
-            key={`${cell.x}-${cell.y}`}
-            {...cell}
-            showShips={showShips}
-            onClick={() => handleCellClick(cell.x, cell.y)}
-            isOver={isOver}
-            canDrop={canDrop}
-          />
-        ))
-      )}
-    </div>
-  );
-
   return (
     <div className="p-4">
       {placementPhase ? (
@@ -170,6 +143,25 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       )}
     </div>
   );
+
+  function renderBoard(isOver?: boolean, canDrop?: boolean) {
+    return (
+      <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
+        {board.map((row) => 
+          row.map((cell) => (
+            <CellComponent
+              key={`${cell.x}-${cell.y}`}
+              {...cell}
+              showShips={showShips}
+              onClick={() => handleCellClick(cell.x, cell.y)}
+              isOver={isOver}
+              canDrop={canDrop}
+            />
+          ))
+        )}
+      </div>
+    );
+  }
 });
 
 GameBoard.displayName = "GameBoard";

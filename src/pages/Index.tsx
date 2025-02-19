@@ -28,9 +28,9 @@ const Index = () => {
   const [isReady, setIsReady] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [ships, setShips] = useState([
-    { id: "ship1", length: 3, isVertical: false, isPlaced: false },
-    { id: "ship2", length: 3, isVertical: false, isPlaced: false },
-    { id: "ship3", length: 2, isVertical: false, isPlaced: false },
+    { id: "ship1", length: 2, isVertical: false, isPlaced: false },
+    { id: "ship2", length: 2, isVertical: false, isPlaced: false },
+    { id: "ship3", length: 3, isVertical: false, isPlaced: false },
   ]);
   
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
@@ -155,13 +155,25 @@ const Index = () => {
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
     if (isReady) return;
 
-    setShips(ships.map(ship => 
-      ship.id === shipId 
-        ? { ...ship, isPlaced: true }
-        : ship
-    ));
+    // Find the ship that was placed
+    const placedShip = ships.find(ship => ship.id === shipId);
+    if (!placedShip) return;
 
-    setPlacedShips(prev => [...prev, { id: shipId, positions }]);
+    // Update ships state
+    setShips(prevShips => 
+      prevShips.map(ship => 
+        ship.id === shipId 
+          ? { ...ship, isPlaced: true }
+          : ship
+      )
+    );
+
+    // Update placed ships
+    setPlacedShips(prev => {
+      // Remove any existing placement for this ship
+      const filtered = prev.filter(ship => ship.id !== shipId);
+      return [...filtered, { id: shipId, positions }];
+    });
 
     const updatedPlacedCount = placedShips.length + 1;
     if (updatedPlacedCount === ships.length) {

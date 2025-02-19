@@ -1,3 +1,4 @@
+
 import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -46,15 +47,14 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
 
   useImperativeHandle(ref, () => ({
     resetBoard: () => {
-      setBoard(
-        Array(5)
-          .fill(null)
-          .map((_, y) =>
-            Array(5)
-              .fill(null)
-              .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false }))
-          )
-      );
+      const newBoard = Array(5)
+        .fill(null)
+        .map((_, y) =>
+          Array(5)
+            .fill(null)
+            .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false, shipId: undefined }))
+        );
+      setBoard(newBoard);
     }
   }));
 

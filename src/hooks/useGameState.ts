@@ -22,6 +22,44 @@ export function useGameState(teamId: string | null) {
     enemyHits: [],
   });
 
+  // Load existing ship placements when component mounts
+  useEffect(() => {
+    if (!teamId) return;
+
+    const loadExistingShips = async () => {
+      const { data, error } = await supabase
+        .from('game_participants')
+        .select('board_state')
+        .eq('team_id', teamId)
+        .single();
+
+      if (error) {
+        if (error.code !== 'PGRST116') { // No results error
+          console.error('Error loading existing ships:', error);
+        }
+        return;
+      }
+
+      if (data && data.board_state) {
+        const boardState = data.board_state as unknown as BoardState;
+        if (boardState.ships && boardState.ships.length > 0) {
+          setPlacedShips(boardState.ships.map(ship => ({
+            id: ship.id,
+            positions: ship.positions
+          })));
+          setShips(ships.map(ship => ({
+            ...ship,
+            isPlaced: boardState.ships.some(s => s.id === ship.id)
+          })));
+          setIsReady(true);
+          checkGameStart();
+        }
+      }
+    };
+
+    loadExistingShips();
+  }, [teamId]);
+
   useEffect(() => {
     if (!teamId || !gameStarted) return;
 
@@ -74,7 +112,7 @@ export function useGameState(teamId: string | null) {
 
         const { error: participantError } = await supabase
           .from('game_participants')
-          .insert({
+          .upsert({
             team_id: teamId,
             board_state: initialBoardState
           });
@@ -152,6 +190,7 @@ export function useGameState(teamId: string | null) {
   const resetShips = () => {
     setShips(initialShips);
     setPlacedShips([]);
+    setIsReady(false);
   };
 
   return {

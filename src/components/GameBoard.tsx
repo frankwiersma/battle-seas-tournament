@@ -1,3 +1,4 @@
+
 import React, { useState, forwardRef, useImperativeHandle, useEffect } from "react";
 import { useDrop } from "react-dnd";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -38,49 +39,44 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   showShips = true
 }, ref) => {
   const isMobile = useIsMobile();
-  const [board, setBoard] = useState<Cell[][]>(
-    Array(5)
-      .fill(null)
-      .map((_, y) =>
-        Array(5)
-          .fill(null)
-          .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false }))
-      )
-  );
+  const [board, setBoard] = useState<Cell[][]>(createEmptyBoard());
+
+  function createEmptyBoard() {
+    return Array(5).fill(null).map((_, y) =>
+      Array(5).fill(null).map((_, x) => ({
+        x,
+        y,
+        hasShip: false,
+        isHit: false,
+        isMiss: false
+      }))
+    );
+  }
 
   useEffect(() => {
-    const newBoard = Array(5)
-      .fill(null)
-      .map((_, y) =>
-        Array(5)
-          .fill(null)
-          .map((_, x) => {
-            const hasShip = placedShips?.some(ship =>
-              ship.positions.some(pos => pos.x === x && pos.y === y)
-            );
-            const hit = hits?.find(h => h.x === x && h.y === y);
-            return {
-              x,
-              y,
-              hasShip,
-              isHit: hit?.isHit || false,
-              isMiss: hit && !hit.isHit,
-            };
-          })
-      );
+    const newBoard = createEmptyBoard();
+    // Apply placed ships
+    placedShips?.forEach(ship => {
+      ship.positions.forEach(pos => {
+        if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
+          newBoard[pos.y][pos.x].hasShip = true;
+          newBoard[pos.y][pos.x].shipId = ship.id;
+        }
+      });
+    });
+    // Apply hits
+    hits?.forEach(hit => {
+      if (newBoard[hit.y] && newBoard[hit.y][hit.x]) {
+        newBoard[hit.y][hit.x].isHit = hit.isHit;
+        newBoard[hit.y][hit.x].isMiss = !hit.isHit;
+      }
+    });
     setBoard(newBoard);
   }, [placedShips, hits]);
 
   useImperativeHandle(ref, () => ({
     resetBoard: () => {
-      const newBoard = Array(5)
-        .fill(null)
-        .map((_, y) =>
-          Array(5)
-            .fill(null)
-            .map((_, x) => ({ x, y, hasShip: false, isHit: false, isMiss: false, shipId: undefined }))
-        );
-      setBoard(newBoard);
+      setBoard(createEmptyBoard());
     }
   }));
 
@@ -91,6 +87,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       if (x + length > 5) return false;
     }
 
+    // Check if any cell in ship's path or adjacent cells is occupied
     for (let i = -1; i <= length; i++) {
       for (let j = -1; j <= 1; j++) {
         const checkX = isVertical ? x + j : x + i;
@@ -115,20 +112,22 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       return;
     }
 
-    const newBoard = [...board];
+    const newBoard = [...board.map(row => [...row])];
     const positions: { x: number; y: number }[] = [];
+
+    const placeCell = (cellX: number, cellY: number) => {
+      newBoard[cellY][cellX].hasShip = true;
+      newBoard[cellY][cellX].shipId = ship.id;
+      positions.push({ x: cellX, y: cellY });
+    };
 
     if (ship.isVertical) {
       for (let i = 0; i < ship.length; i++) {
-        newBoard[y + i][x].hasShip = true;
-        newBoard[y + i][x].shipId = ship.id;
-        positions.push({ x, y: y + i });
+        placeCell(x, y + i);
       }
     } else {
       for (let i = 0; i < ship.length; i++) {
-        newBoard[y][x + i].hasShip = true;
-        newBoard[y][x + i].shipId = ship.id;
-        positions.push({ x: x + i, y });
+        placeCell(x + i, y);
       }
     }
 
@@ -171,29 +170,51 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   }));
 
   const renderCell = (cell: Cell) => {
-    const baseClasses = "w-16 h-16 border border-opacity-20 border-white rounded-lg transition-all duration-300 backdrop-blur-sm";
-    let stateClasses = cell.isHit
-      ? "bg-accent/80"
-      : cell.isMiss
-      ? "bg-muted/20"
-      : cell.hasShip && showShips
-      ? "bg-accent/50"
-      : "bg-secondary/10 hover:bg-secondary/20";
+    let cellClasses = [
+      "w-16 h-16 border border-opacity-20 border-white rounded-lg transition-all duration-300 backdrop-blur-sm",
+      "relative"
+    ];
 
+    // Base state classes
+    if (cell.isHit) {
+      cellClasses.push("bg-red-500/80");
+    } else if (cell.isMiss) {
+      cellClasses.push("bg-blue-500/50");
+    } else if (cell.hasShip && showShips) {
+      cellClasses.push("bg-green-500/80");
+    } else {
+      cellClasses.push("bg-white/10 hover:bg-white/20");
+    }
+
+    // Drag state classes
     if (isOver && canDrop) {
-      stateClasses += " bg-green-500/50";
+      cellClasses.push("bg-green-500/50");
     } else if (isOver && !canDrop) {
-      stateClasses += " bg-red-500/50";
+      cellClasses.push("bg-red-500/50");
     }
 
     return (
       <div
         key={`${cell.x}-${cell.y}`}
         data-coords={`${cell.x},${cell.y}`}
-        className={`${baseClasses} ${stateClasses} animate-fade-in`}
+        className={cellClasses.join(" ")}
         style={{ animationDelay: `${cell.x * 50 + cell.y * 50}ms` }}
         onClick={() => handleCellClick(cell.x, cell.y)}
-      />
+      >
+        {cell.hasShip && showShips && (
+          <div className="absolute inset-1 rounded bg-green-300/20 border-2 border-green-300/50" />
+        )}
+        {cell.isHit && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+          </div>
+        )}
+        {cell.isMiss && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-4 h-4 border-2 border-blue-500 rounded-full" />
+          </div>
+        )}
+      </div>
     );
   };
 

@@ -29,11 +29,25 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   const gameBoardRef = useRef<{ resetBoard: () => void }>(null);
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    // Update the ships array to mark the placed ship
     const updatedShips = ships.map(ship =>
       ship.id === shipId ? { ...ship, isPlaced: true } : ship
     );
     setShips(updatedShips);
-    setPlacedShips([...placedShips, { id: shipId, positions }]);
+
+    // Add the new ship to placedShips without removing existing ones
+    const newPlacedShips = [...placedShips];
+    const existingShipIndex = newPlacedShips.findIndex(ship => ship.id === shipId);
+    
+    if (existingShipIndex !== -1) {
+      // Replace existing ship placement
+      newPlacedShips[existingShipIndex] = { id: shipId, positions };
+    } else {
+      // Add new ship placement
+      newPlacedShips.push({ id: shipId, positions });
+    }
+    
+    setPlacedShips(newPlacedShips);
   };
 
   return (

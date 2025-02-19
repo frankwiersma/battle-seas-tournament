@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
@@ -15,6 +15,34 @@ export function useShipPlacement(teamId: string | null) {
   const [ships, setShips] = useState(initialShips);
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isReady, setIsReady] = useState(false);
+
+  // Sync with database whenever placedShips changes
+  useEffect(() => {
+    if (!teamId || placedShips.length === 0) return;
+
+    const syncBoardState = async () => {
+      const boardState = {
+        ships: placedShips.map(ship => ({
+          id: ship.id,
+          positions: ship.positions
+        })),
+        hits: []
+      } as Json;
+
+      const { error } = await supabase
+        .from('game_participants')
+        .upsert({
+          team_id: teamId,
+          board_state: boardState
+        });
+
+      if (error) {
+        console.error('Error syncing board state:', error);
+      }
+    };
+
+    syncBoardState();
+  }, [placedShips, teamId]);
 
   const loadExistingShips = async () => {
     if (!teamId) return;

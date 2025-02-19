@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
-import type { GameState, PlacedShip } from "@/types/game";
+import type { GameState, PlacedShip, BoardState } from "@/types/game";
 
 export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
   const [gameStarted, setGameStarted] = useState(false);

@@ -2,7 +2,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
-import type { GameState } from "@/types/game";
+import type { GameState, BoardState } from "@/types/game";
 
 export async function handleCellClick(
   x: number,
@@ -28,10 +28,10 @@ export async function handleCellClick(
     );
 
     const newHits = [...gameState.myHits, { x, y, isHit }];
-    setGameState(prev => ({
-      ...prev,
+    setGameState({
+      ...gameState,
       myHits: newHits,
-    }));
+    });
 
     const updatedBoardState = {
       ships: gameState.myShips.map(ship => ({

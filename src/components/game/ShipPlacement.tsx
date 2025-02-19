@@ -42,4 +42,4 @@ export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPl
       })}
     </div>
   );
-});
+};

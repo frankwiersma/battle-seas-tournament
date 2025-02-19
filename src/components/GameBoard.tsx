@@ -40,6 +40,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     );
   }
 
+  // Update board whenever placedShips or hits change
   useEffect(() => {
     const newBoard = createEmptyBoard();
     
@@ -65,7 +66,9 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   }, [placedShips, hits]);
 
   useImperativeHandle(ref, () => ({
-    resetBoard: () => setBoard(createEmptyBoard())
+    resetBoard: () => {
+      setBoard(createEmptyBoard());
+    }
   }));
 
   const canPlaceShip = (x: number, y: number, length: number, isVertical: boolean): boolean => {
@@ -75,6 +78,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       if (x + length > 5) return false;
     }
 
+    // Check for overlapping ships and adjacent ships
     for (let i = -1; i <= length; i++) {
       for (let j = -1; j <= 1; j++) {
         const checkX = isVertical ? x + j : x + i;
@@ -111,7 +115,6 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       }
     }
 
-    // Let parent component handle state update
     onShipPlaced?.(ship.id, positions);
   };
 
@@ -127,7 +130,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     onCellClick?.(x, y);
   };
 
-  const gridContent = (
+  const renderGrid = (isOver = false, canDrop = false) => (
     <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
       {board.map((row) => 
         row.map((cell) => (
@@ -136,8 +139,8 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
             {...cell}
             showShips={showShips}
             onClick={() => handleCellClick(cell.x, cell.y)}
-            isOver={false}
-            canDrop={false}
+            isOver={isOver}
+            canDrop={canDrop}
           />
         ))
       )}
@@ -148,10 +151,10 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     <div className="p-4">
       {placementPhase ? (
         <ShipPlacement onPlaceShip={placeShip} canPlaceShip={canPlaceShip}>
-          {gridContent}
+          {renderGrid()}
         </ShipPlacement>
       ) : (
-        gridContent
+        renderGrid()
       )}
     </div>
   );

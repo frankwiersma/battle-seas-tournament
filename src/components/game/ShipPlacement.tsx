@@ -1,13 +1,12 @@
 
-import React, { ReactElement } from "react";
+import React from "react";
 import { useDrop } from "react-dnd";
 import type { ShipDragItem } from "./types";
-import { CellProps } from "./Cell";
 
 interface ShipPlacementProps {
   onPlaceShip: (x: number, y: number, ship: ShipDragItem) => void;
   canPlaceShip: (x: number, y: number, length: number, isVertical: boolean) => boolean;
-  children: ReactElement<CellProps>;
+  children: React.ReactNode;
 }
 
 export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPlaceShip, children }) => {
@@ -35,7 +34,12 @@ export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPl
 
   return (
     <div ref={drop}>
-      {React.cloneElement(children, { isOver, canDrop })}
+      {React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child, { isOver, canDrop });
+        }
+        return child;
+      })}
     </div>
   );
-};
+});

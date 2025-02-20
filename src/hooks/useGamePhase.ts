@@ -3,6 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
 import type { GameState, PlacedShip, BoardState } from "@/types/game";
+import { debounce } from 'lodash';
+
+// Add this interface at the top of the file, after the imports
+interface GameScores {
+  myScore: number;
+  enemyScore: number;
+  myGuesses: number;
+  enemyGuesses: number;
+  myShipsSunk: number;
+  enemyShipsSunk: number;
+}
 
 export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
   const [gameStarted, setGameStarted] = useState(false);
@@ -12,12 +23,22 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
     myHits: [],
     enemyHits: [],
   });
+  const [scores, setScores] = useState<GameScores>({
+    myScore: 0,
+    enemyScore: 0,
+    myGuesses: 0,
+    enemyGuesses: 0,
+    myShipsSunk: 0,
+    enemyShipsSunk: 0
+  });
+  const [gameWon, setGameWon] = useState(false);
 
+  // We need to subscribe to both teams' ready status
   useEffect(() => {
     if (!teamId) return;
 
-    // Subscribe to team ready status changes
-    const teamChannel = supabase.channel('team_updates')
+    const teamsChannel = supabase
+      .channel('teams-status')
       .on(
         'postgres_changes',
         {
@@ -25,161 +46,383 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
           schema: 'public',
           table: 'teams',
         },
-        async () => {
-          // Check if both teams are ready
+        async (payload) => {
+          console.log('Team status changed:', payload);
+          
+          // First get the current game participant to find the game_id
+          const { data: myParticipant } = await supabase
+            .from('game_participants')
+            .select('game_id, board_state')
+            .eq('team_id', teamId)
+            .single();
+
+          if (!myParticipant?.game_id) return;
+
+          // Get both participants for this specific game
+          const { data: participants } = await supabase
+            .from('game_participants')
+            .select('board_state, team_id')
+            .eq('game_id', myParticipant.game_id);
+          
+          // Check if both teams exist and have placed all their ships
+          const allShipsPlaced = participants?.length === 2 && participants.every(participant => {
+            const boardState = participant.board_state as unknown as BoardState;
+            return boardState?.ships?.length === 3;
+          });
+
+          // Get teams ready status for the participants in this game
           const { data: teams } = await supabase
             .from('teams')
-            .select('*')
-            .eq('is_ready', true);
+            .select('is_ready, id')
+            .in('id', participants?.map(p => p.team_id) || []);
+          
+          console.log('Current teams status:', teams);
+          console.log('All ships placed:', allShipsPlaced);
 
-          if (teams && teams.length >= 2) {
-            // Find matching team (A vs B, C vs D, etc.)
-            const currentTeam = teams.find(t => t.id === teamId);
-            const opponentTeam = teams.find(t => {
-              const currentLetter = currentTeam?.team_letter.toUpperCase();
-              const opponentLetter = t.team_letter.toUpperCase();
-              return (currentLetter === 'A' && opponentLetter === 'B') ||
-                     (currentLetter === 'B' && opponentLetter === 'A') ||
-                     (currentLetter === 'C' && opponentLetter === 'D') ||
-                     (currentLetter === 'D' && opponentLetter === 'C');
-            });
+          if (teams?.length === 2 && teams.every(team => team.is_ready) && allShipsPlaced) {
+            console.log('Both teams ready and all ships placed, starting game!');
+            // Update game status to in_progress
+            await supabase
+              .from('games')
+              .update({ 
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', myParticipant.game_id);
 
-            if (currentTeam && opponentTeam) {
-              // Look for any existing game between these teams
-              const { data: existingGame } = await supabase
-                .from('games')
-                .select('*')
-                .or(`current_team_id.eq.${currentTeam.id},current_team_id.eq.${opponentTeam.id}`)
-                .eq('status', 'in_progress')
-                .single();
-
-              let gameId = existingGame?.id;
-
-              if (!existingGame) {
-                // Create new game if none exists
-                const { data: newGame, error: gameError } = await supabase
-                  .from('games')
-                  .insert({
-                    status: 'in_progress',
-                    current_team_id: currentTeam.id,
-                    winner_team_id: null,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                  })
-                  .select()
-                  .single();
-
-                if (gameError) {
-                  console.error('Error creating game:', gameError);
-                  return;
-                }
-
-                gameId = newGame.id;
-              }
-
-              // Update both participants with game_id
-              const { error: participantError } = await supabase
-                .from('game_participants')
-                .upsert([
-                  {
-                    team_id: currentTeam.id,
-                    game_id: gameId,
-                    board_state: currentTeam.id === teamId ? 
-                      { ships: placedShips, hits: [] } : 
-                      { ships: [], hits: [] }
-                  },
-                  {
-                    team_id: opponentTeam.id,
-                    game_id: gameId,
-                    board_state: opponentTeam.id === teamId ? 
-                      { ships: placedShips, hits: [] } : 
-                      { ships: [], hits: [] }
-                  }
-                ]);
-
-              if (participantError) {
-                console.error('Error updating game participants:', participantError);
-                return;
-              }
-
-              setGameStarted(true);
-              setIsPlacementPhase(false);
-              setGameState(prev => ({
-                ...prev,
-                myShips: placedShips,
-              }));
-              toast.success("Both teams are ready! The battle begins!");
-            }
+            setGameStarted(true);
+            setIsPlacementPhase(false);
+          } else if (teams?.every(team => team.is_ready) && !allShipsPlaced) {
+            // If teams are ready but ships aren't placed, reset ready status
+            await supabase
+              .from('teams')
+              .update({ is_ready: false })
+              .in('id', teams.map(t => t.id));
+            
+            toast.error("Cannot start game - all ships must be placed first!");
           }
         }
       )
       .subscribe();
 
-    // Subscribe to opponent's moves and game status
-    const gameChannel = supabase.channel('game_updates')
+    // Also check initial state
+    const checkInitialState = async () => {
+      // First get the current game participant
+      const { data: myParticipant } = await supabase
+        .from('game_participants')
+        .select('game_id, board_state')
+        .eq('team_id', teamId)
+        .single();
+
+      if (!myParticipant?.game_id) return;
+
+      // Get both participants for this specific game
+      const { data: participants } = await supabase
+        .from('game_participants')
+        .select('board_state, team_id')
+        .eq('game_id', myParticipant.game_id);
+      
+      // Check if both teams exist and have placed all their ships
+      const allShipsPlaced = participants?.length === 2 && participants.every(participant => {
+        const boardState = participant.board_state as unknown as BoardState;
+        return boardState?.ships?.length === 3;
+      });
+
+      // Get teams ready status for the participants in this game
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('is_ready, id')
+        .in('id', participants?.map(p => p.team_id) || []);
+      
+      console.log('Initial teams status:', teams);
+      console.log('Initial ships placed status:', allShipsPlaced);
+
+      // Check if game is already in progress
+      const { data: game } = await supabase
+        .from('games')
+        .select('status')
+        .eq('id', myParticipant.game_id)
+        .single();
+
+      if (game?.status === 'in_progress' || 
+          (teams?.length === 2 && teams.every(team => team.is_ready) && allShipsPlaced)) {
+        console.log('Game is in progress or ready to start!');
+        setGameStarted(true);
+        setIsPlacementPhase(false);
+      }
+    };
+
+    checkInitialState();
+
+    return () => {
+      supabase.removeChannel(teamsChannel);
+    };
+  }, [teamId]);
+
+  // Subscribe to game updates
+  useEffect(() => {
+    if (!teamId) return;
+
+    // Subscribe to game_participants changes
+    const subscription = supabase
+      .channel('game-updates')
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'game_participants',
-          filter: `team_id=neq.${teamId}`,
         },
         (payload) => {
-          const boardState = payload.new.board_state as unknown as BoardState;
-          if (boardState && boardState.hits) {
-            setGameState(prev => ({
-              ...prev,
-              enemyHits: boardState.hits
-            }));
-          }
+          console.log('Game update received:', payload);
+          loadInitialState();  // This is causing the repeated requests
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(teamChannel);
-      supabase.removeChannel(gameChannel);
+      subscription.unsubscribe();
     };
-  }, [teamId, placedShips]);
+  }, [teamId]);
+
+  // Add initial state loading to useGamePhase
+  useEffect(() => {
+    if (!teamId) return;
+
+    const loadInitialState = async () => {
+      try {
+        // First get the current game participant
+        const { data: participant } = await supabase
+          .from('game_participants')
+          .select('game_id')
+          .eq('team_id', teamId)
+          .single();
+
+        if (!participant?.game_id) return;
+
+        // Then get the game with all participants
+        const { data: game } = await supabase
+          .from('games')
+          .select(`
+            id,
+            status,
+            current_team_id,
+            winner_team_id,
+            game_participants (
+              id,
+              team_id,
+              board_state
+            )
+          `)
+          .eq('id', participant.game_id)
+          .single();
+
+        if (!game?.game_participants) return;
+
+        const participants = game.game_participants;
+        const myParticipant = participants.find(p => p.team_id === teamId);
+        const enemyParticipant = participants.find(p => p.team_id !== teamId);
+
+        if (myParticipant && enemyParticipant) {
+          const myBoardState = myParticipant.board_state as unknown as BoardState;
+          const enemyBoardState = enemyParticipant.board_state as unknown as BoardState;
+
+          // Set game state with correct ship placements
+          setGameState({
+            myShips: myBoardState.ships || [], // Use my ships from my board state
+            myHits: enemyBoardState.hits || [], // My hits on enemy board
+            enemyHits: myBoardState.hits || [] // Enemy hits on my board
+          });
+
+          // Calculate and set scores
+          const myHits = enemyBoardState.hits || [];
+          const enemyHits = myBoardState.hits || [];
+          
+          const mySunkShips = calculateSunkShips(myHits, enemyBoardState.ships || []);
+          const enemySunkShips = calculateSunkShips(enemyHits, myBoardState.ships || []);
+
+          setScores({
+            myScore: myHits.filter(h => h.isHit).length,
+            enemyScore: enemyHits.filter(h => h.isHit).length,
+            myGuesses: myHits.length,
+            enemyGuesses: enemyHits.length,
+            myShipsSunk: mySunkShips,
+            enemyShipsSunk: enemySunkShips
+          });
+
+          // Check if game is in progress
+          if (myHits.length > 0 || enemyHits.length > 0) {
+            setGameStarted(true);
+            setIsPlacementPhase(false);
+          }
+
+          // Check if game is won
+          if (mySunkShips === 3) {
+            setGameWon(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading initial game state:', error);
+      }
+    };
+
+    loadInitialState();
+  }, [teamId]);
 
   const checkGameStart = async () => {
     try {
+      console.log('Starting checkGameStart...');
+      
+      // Check if all ships are placed first
+      const { data: participant } = await supabase
+        .from('game_participants')
+        .select('board_state')
+        .eq('team_id', teamId)
+        .single();
+      
+      const boardState = participant?.board_state as unknown as BoardState;
+      if (!boardState?.ships || boardState.ships.length !== 3) {
+        toast.error("Please place all ships before declaring ready!");
+        return;
+      }
+      
       // Update team ready status
-      const { error: updateError } = await supabase
+      await supabase
         .from('teams')
         .update({ is_ready: true })
         .eq('id', teamId);
+      
+      console.log('Team ready status updated');
 
-      if (updateError) {
-        console.error('Error updating team ready status:', updateError);
-        return;
+      // First check for any existing game that's waiting for players
+      const { data: existingGames, error: fetchError } = await supabase
+        .from('games')
+        .select(`
+          id,
+          status,
+          game_participants (
+            team_id
+          )
+        `)
+        .eq('status', 'waiting')
+        .order('created_at', { ascending: false });
+
+      console.log('Existing games check:', { existingGames, fetchError });
+
+      let gameId;
+
+      if (existingGames && existingGames.length > 0) {
+        // Find a game that doesn't already have this team and has only one participant
+        const availableGame = existingGames.find(game => 
+          game.game_participants.length === 1 && 
+          !game.game_participants.some(p => p.team_id === teamId)
+        );
+
+        if (availableGame) {
+          // Join existing game
+          gameId = availableGame.id;
+          console.log('Joining existing game:', gameId);
+        }
       }
 
-      // Save initial board state
+      if (!gameId) {
+        // Create a new game if no suitable game was found
+        console.log('Creating new game...');
+        const { data: newGame, error: createError } = await supabase
+          .from('games')
+          .insert({
+            status: 'waiting',
+            current_team_id: teamId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating game:', createError);
+          throw createError;
+        }
+
+        if (!newGame) {
+          throw new Error('Failed to create new game');
+        }
+
+        gameId = newGame.id;
+        console.log('Created new game:', gameId);
+      }
+
+      // Save initial board state and link to game
       const initialBoardState = {
         ships: placedShips.map(ship => ({
           id: ship.id,
           positions: ship.positions.map(pos => ({ x: pos.x, y: pos.y }))
         })),
         hits: []
-      } as Json;
+      };
 
-      const { error: participantError } = await supabase
+      // First, check if we're already a participant in this game
+      const { data: existingParticipant } = await supabase
         .from('game_participants')
-        .upsert({
-          team_id: teamId,
-          board_state: initialBoardState
-        });
+        .select('*')
+        .eq('team_id', teamId)
+        .maybeSingle();
 
-      if (participantError) {
-        console.error('Error saving board state:', participantError);
-        return;
+      if (existingParticipant) {
+        // Update existing participant
+        console.log('Updating existing participant');
+        await supabase
+          .from('game_participants')
+          .update({
+            game_id: gameId,
+            board_state: initialBoardState,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingParticipant.id);
+      } else {
+        // Create new participant
+        console.log('Creating new participant');
+        await supabase
+          .from('game_participants')
+          .insert({
+            team_id: teamId,
+            game_id: gameId,
+            board_state: initialBoardState,
+            created_at: new Date().toISOString()
+          });
+      }
+
+      // Check if both teams are ready
+      const { data: participants } = await supabase
+        .from('game_participants')
+        .select('team_id, board_state')
+        .eq('game_id', gameId);
+
+      if (participants && participants.length === 2 && 
+          participants.every(p => p.board_state?.ships?.length === 3)) {
+        // Both teams have joined and placed all ships, update game status to in_progress
+        await supabase
+          .from('games')
+          .update({ 
+            status: 'in_progress',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', gameId);
+
+        setGameStarted(true);
+        setIsPlacementPhase(false);
+        console.log('Game started:', gameId);
       }
     } catch (error) {
-      console.error('Error checking game start:', error);
+      console.error('Error in checkGameStart:', error);
+      throw error;
     }
   };
+
+  const debouncedSetGameStarted = debounce((value: boolean) => {
+    setGameStarted(value);
+    setIsPlacementPhase(!value);
+  }, 500);
 
   return {
     gameStarted,
@@ -188,6 +431,17 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
     setGameState,
     checkGameStart,
     setIsPlacementPhase,
-    setGameStarted,
+    setGameStarted: debouncedSetGameStarted,
+    scores,
+    gameWon
   };
 }
+
+const calculateSunkShips = (hits: Array<{ x: number; y: number; isHit: boolean }>, ships: Array<{ positions: Array<{ x: number; y: number }> }>) => {
+  return ships.filter(ship => {
+    // A ship is sunk if all its positions have been hit
+    return ship.positions.every(pos =>
+      hits.some(hit => hit.x === pos.x && hit.y === pos.y && hit.isHit)
+    );
+  }).length;
+};

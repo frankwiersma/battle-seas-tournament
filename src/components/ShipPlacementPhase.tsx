@@ -5,14 +5,19 @@ import { Button } from "@/components/ui/button";
 import type { PlacedShip } from "@/types/game";
 
 interface ShipPlacementPhaseProps {
-  ships: Array<{ id: string; length: number; isVertical: boolean; isPlaced: boolean }>;
+  ships: Array<{
+    id: string;
+    length: number;
+    isVertical: boolean;
+    isPlaced: boolean;
+  }>;
+  setShips: React.Dispatch<React.SetStateAction<typeof ships>>;
   placedShips: PlacedShip[];
+  setPlacedShips: React.Dispatch<React.SetStateAction<PlacedShip[]>>;
   isReady: boolean;
-  setShips: Dispatch<SetStateAction<Array<{ id: string; length: number; isVertical: boolean; isPlaced: boolean }>>>;
-  setPlacedShips: Dispatch<SetStateAction<PlacedShip[]>>;
-  onRotateShip: (shipId: string) => void;
-  onReadyClick: () => void;
+  onReadyClick: () => Promise<void>;
   onResetShips: () => void;
+  onRotateShip: (shipId: string) => void;
 }
 
 const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({

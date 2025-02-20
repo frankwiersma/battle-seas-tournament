@@ -1,4 +1,4 @@
-import React, { useState, forwardRef, useImperativeHandle, useRef, useEffect, useCallback } from "react";
+import React, { useState, forwardRef, useImperativeHandle, useRef, useEffect, useCallback, useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { Cell as CellComponent } from "./game/Cell";
@@ -26,65 +26,64 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
 }, ref) => {
   const isMobile = useIsMobile();
   
-  function createEmptyBoard(): Cell[][] {
-    return Array(5).fill(null).map((_, y) =>
+  useEffect(() => {
+    console.log('GameBoard received hits:', hits);
+    console.log('GameBoard placedShips:', placedShips);
+  }, [hits, placedShips]);
+  
+  const board = useMemo(() => {
+    const newBoard = Array(5).fill(null).map((_, y) =>
       Array(5).fill(null).map((_, x) => ({
-        x,
-        y,
         hasShip: false,
         isHit: false,
         isMiss: false,
-        shipId: undefined
+        x: x,
+        y: y
       }))
     );
-  }
-  
-  // Create board state
-  const [board, setBoard] = useState<Cell[][]>(createEmptyBoard());
-  
-  // Keep track of the current board state without causing re-renders
-  const boardRef = useRef<Cell[][]>(board);
 
-  // Update board when placedShips or hits change
-  useEffect(() => {
-    const newBoard = createEmptyBoard();
-    
-    // Apply all placed ships to the board
+    // Place ships first
+    console.log('Placing ships:', placedShips);
     placedShips.forEach(ship => {
       ship.positions.forEach(pos => {
-        if (newBoard[pos.y]?.[pos.x]) {
-          newBoard[pos.y][pos.x] = {
-            ...newBoard[pos.y][pos.x],
-            hasShip: true,
-            shipId: ship.id
-          };
+        if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
+          newBoard[pos.y][pos.x].hasShip = true;
+          newBoard[pos.y][pos.x].x = pos.x;
+          newBoard[pos.y][pos.x].y = pos.y;
         }
       });
     });
 
-    // Apply hits
+    // Then mark hits and misses
+    console.log('Processing hits:', hits);
     hits.forEach(hit => {
-      if (newBoard[hit.y]?.[hit.x]) {
-        newBoard[hit.y][hit.x] = {
-          ...newBoard[hit.y][hit.x],
-          isHit: hit.isHit,
-          isMiss: !hit.isHit
-        };
+      if (newBoard[hit.y] && newBoard[hit.y][hit.x]) {
+        const cell = newBoard[hit.y][hit.x];
+        cell.isHit = hit.isHit;
+        cell.isMiss = !hit.isHit;
+        console.log(`Setting cell at ${hit.x},${hit.y}:`, cell);
       }
     });
 
-    // Only update if the board has actually changed
-    if (JSON.stringify(boardRef.current) !== JSON.stringify(newBoard)) {
-      boardRef.current = newBoard;
-      setBoard(newBoard);
-    }
+    console.log('Final board state:', newBoard);
+    return newBoard;
   }, [placedShips, hits]);
+
+  // Keep track of the current board state without causing re-renders
+  const boardRef = useRef<Cell[][]>(board);
 
   useImperativeHandle(ref, () => ({
     resetBoard: () => {
-      const newBoard = createEmptyBoard();
+      const newBoard = Array(5).fill(null).map(() =>
+        Array(5).fill(null).map(() => ({
+          hasShip: false,
+          isHit: false,
+          isMiss: false,
+          x: 0,
+          y: 0
+        }))
+      );
       boardRef.current = newBoard;
-      setBoard(newBoard);
     }
   }));
 
@@ -124,7 +123,6 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
 
     return true;
   }, []);
-
   const placeShip = (x: number, y: number, ship: ShipDragItem) => {
     if (!canPlaceShip(x, y, ship.length, ship.isVertical)) {
       toast.error("Cannot place ship here!");
@@ -146,7 +144,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   const handleCellClick = (x: number, y: number) => {
     if (!isCurrentPlayer || placementPhase) return;
     
-    const cell = board[y][x];
+    const cell = boardRef.current[y][x];
     if (cell.isHit || cell.isMiss) {
       toast.error("You've already fired at this position!");
       return;
@@ -155,35 +153,67 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     onCellClick?.(x, y);
   };
 
+  const letters = ['A', 'B', 'C', 'D', 'E'];
+
   return (
     <div className="p-4">
       {placementPhase ? (
         <ShipPlacement onPlaceShip={placeShip} canPlaceShip={canPlaceShip}>
-          <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
-            {board.map((row, y) => 
-              row.map((cell, x) => (
-                <CellComponent
-                  key={`${x}-${y}`}
-                  {...cell}
-                  showShips={showShips}
-                  onClick={() => handleCellClick(x, y)}
-                />
-              ))
-            )}
+          <div className="relative">
+            <div className="flex justify-center items-center mb-2">
+              <div className="w-12"></div>
+              {letters.map((letter) => (
+                <div key={letter} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{letter}</div>
+              ))}
+            </div>
+            <div className="flex">
+              <div className="flex flex-col justify-around mr-2">
+                {[1, 2, 3, 4, 5].map((num) => (
+                  <div key={num} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{num}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg">
+                {board.map((row, y) => 
+                  row.map((cell, x) => (
+                    <CellComponent
+                      key={`${x}-${y}`}
+                      {...cell}
+                      showShips={showShips}
+                      onClick={() => handleCellClick(x, y)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </ShipPlacement>
       ) : (
-        <div className="grid grid-cols-5 gap-2 bg-primary/5 p-6 rounded-xl backdrop-blur-md shadow-lg">
-          {board.map((row, y) => 
-            row.map((cell, x) => (
-              <CellComponent
-                key={`${x}-${y}`}
-                {...cell}
-                showShips={showShips}
-                onClick={() => handleCellClick(x, y)}
-              />
-            ))
-          )}
+        <div className="relative">
+          <div className="flex justify-center items-center mb-2">
+            <div className="w-12"></div>
+            {letters.map((letter) => (
+              <div key={letter} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{letter}</div>
+            ))}
+          </div>
+          <div className="flex">
+            <div className="flex flex-col justify-around mr-2">
+              {[1, 2, 3, 4, 5].map((num) => (
+                <div key={num} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{num}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg">
+              {board.map((row, y) => 
+                row.map((cell, x) => (
+                  <CellComponent
+                    key={`${x}-${y}`}
+                    {...cell}
+                    showShips={showShips}
+                    onClick={() => handleCellClick(x, y)}
+                  />
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

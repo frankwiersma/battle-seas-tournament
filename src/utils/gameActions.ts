@@ -36,30 +36,55 @@ export async function handleCellClick(
       ship.positions.some(pos => pos.x === x && pos.y === y)
     );
 
-    // Update local state
+    // Create new hits array with the new hit
     const newHits = [...gameState.myHits, { x, y, isHit }];
+
+    // Calculate sunk ships after the new hit
+    const sunkShips = opponentState.ships.filter(ship => 
+      ship.positions.every(pos => 
+        newHits.some(hit => hit.x === pos.x && hit.y === pos.y && hit.isHit)
+      )
+    ).length;
+
+    // Update local game state with new hit
     setGameState({
       ...gameState,
       myHits: newHits,
     });
 
-    // Update database
+    // Update opponent's board state in database with our hits
     const { error: updateError } = await supabase
       .from('game_participants')
       .update({
         board_state: {
           ...opponentState,
-          hits: newHits
+          hits: newHits  // Store our hits on their board
         }
       })
-      .eq('team_id', teamId);
+      .eq('team_id', participants.team_id);  // Update opponent's board
 
     if (updateError) {
       toast.error("Failed to update game state!");
       return;
     }
 
-    toast.success(isHit ? "Direct hit!" : "Miss!");
+    // Show appropriate toast message
+    if (isHit) {
+      toast.success("Direct hit!");
+    } else {
+      toast.error("Miss!");
+    }
+
+    // If all ships are sunk (3 ships in total), update game status
+    if (sunkShips === 3) {
+      await supabase
+        .from('games')
+        .update({ 
+          status: 'completed',
+          winner_team_id: teamId 
+        })
+        .eq('id', participants.game_id);
+    }
   } catch (error) {
     console.error('Error updating game state:', error);
     toast.error("Failed to process move!");

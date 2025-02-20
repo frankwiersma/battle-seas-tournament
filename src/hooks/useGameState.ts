@@ -23,6 +23,8 @@ export function useGameState(teamId: string | null) {
     checkGameStart,
     setIsPlacementPhase,
     setGameStarted,
+    scores,
+    gameWon,
   } = useGamePhase(teamId, placedShips);
 
   useEffect(() => {
@@ -50,5 +52,7 @@ export function useGameState(teamId: string | null) {
     resetShips,
     setIsPlacementPhase,
     setGameStarted,
+    scores,
+    gameWon,
   };
 }

@@ -1,4 +1,3 @@
-
 export interface Position {
   x: number;
   y: number;
@@ -26,4 +25,13 @@ export interface GameState {
   myShips: PlacedShip[];
   myHits: { x: number; y: number; isHit: boolean }[];
   enemyHits: { x: number; y: number; isHit: boolean }[];
+}
+
+export interface GameScores {
+  myScore: number;
+  enemyScore: number;
+  myGuesses: number;
+  enemyGuesses: number;
+  myShipsSunk: number;
+  enemyShipsSunk: number;
 }

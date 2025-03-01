@@ -26,11 +26,8 @@ export function useGameState(teamId: string | null) {
     scores,
     gameWon,
     gameLost,
+    currentGameId,
   } = useGamePhase(teamId, placedShips);
-
-  useEffect(() => {
-    loadExistingShips();
-  }, [teamId]);
 
   const handleGameCellClick = async (x: number, y: number) => {
     if (isPlacementPhase || !teamId) return;
@@ -57,5 +54,6 @@ export function useGameState(teamId: string | null) {
     gameWon,
     gameLost,
     loadExistingShips,
+    currentGameId
   };
 }

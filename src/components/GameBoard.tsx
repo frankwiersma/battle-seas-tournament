@@ -72,18 +72,24 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   // Keep track of the current board state without causing re-renders
   const boardRef = useRef<Cell[][]>(board);
 
+  // Update boardRef when board changes
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
+
   useImperativeHandle(ref, () => ({
     resetBoard: () => {
-      const newBoard = Array(5).fill(null).map(() =>
-        Array(5).fill(null).map(() => ({
+      const newBoard = Array(5).fill(null).map((_, y) =>
+        Array(5).fill(null).map((_, x) => ({
           hasShip: false,
           isHit: false,
           isMiss: false,
-          x: 0,
-          y: 0
+          x: x,
+          y: y
         }))
       );
       boardRef.current = newBoard;
+      console.log('Board reset called, new board state:', newBoard);
     }
   }));
 

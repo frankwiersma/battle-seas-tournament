@@ -15,21 +15,24 @@ export function useShipPlacement(teamId: string | null) {
   const [placedShips, setPlacedShips] = useState<PlacedShip[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isLoadingShips, setIsLoadingShips] = useState(false);
 
-  // Load existing ships on initial mount
+  // Load existing ships whenever teamId changes (including on initial load and after refreshes)
   useEffect(() => {
-    if (teamId && isInitialLoad) {
+    if (teamId) {
+      console.log('TeamId changed or initialized, loading ships for team:', teamId);
       loadExistingShips();
-      setIsInitialLoad(false);
     }
-  }, [teamId, isInitialLoad]);
+  }, [teamId]);
 
-  // Sync with database only when placedShips changes and it's not the initial load
+  // Sync with database only when placedShips changes and it's not during initial loading
   useEffect(() => {
-    if (!teamId || isInitialLoad) return;
+    if (!teamId || isInitialLoad || isLoadingShips || placedShips.length === 0) return;
 
     const syncBoardState = async () => {
       try {
+        console.log('Syncing board state to database for team:', teamId);
+        
         const boardState = {
           ships: placedShips.map(ship => ({
             id: ship.id,
@@ -53,6 +56,7 @@ export function useShipPlacement(teamId: string | null) {
             .eq('team_id', teamId);
 
           if (updateError) throw updateError;
+          console.log('Updated existing board state for team:', teamId);
         } else {
           // Insert new record
           const { error: insertError } = await supabase
@@ -63,6 +67,7 @@ export function useShipPlacement(teamId: string | null) {
             });
 
           if (insertError) throw insertError;
+          console.log('Created new board state for team:', teamId);
         }
       } catch (error: any) {
         console.error('Error syncing board state:', error);
@@ -71,27 +76,47 @@ export function useShipPlacement(teamId: string | null) {
     };
 
     syncBoardState();
-  }, [teamId, placedShips, isInitialLoad]);
+  }, [teamId, placedShips, isInitialLoad, isLoadingShips]);
 
   const loadExistingShips = async () => {
     if (!teamId) return;
 
     try {
-      const { data, error } = await supabase
+      setIsLoadingShips(true);
+      console.log('Loading existing ships for team ID:', teamId);
+      
+      // First check if the team is ready
+      const { data: teamData, error: teamError } = await supabase
+        .from('teams')
+        .select('is_ready')
+        .eq('id', teamId)
+        .single();
+        
+      if (teamError) {
+        console.error('Error checking team ready status:', teamError);
+        toast.error("Failed to check team status");
+        return;
+      }
+      
+      // Get the most recent game participant for this team
+      const { data: participants, error: participantError } = await supabase
         .from('game_participants')
-        .select('board_state')
+        .select('*')
         .eq('team_id', teamId)
-        .maybeSingle();  // Use maybeSingle instead of single
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (error && error.code !== 'PGRST116') { // No results error
-        console.error('Error loading existing ships:', error);
+      if (participantError && participantError.code !== 'PGRST116') { // No results error
+        console.error('Error loading existing ships:', participantError);
         toast.error("Failed to load existing ships");
         return;
       }
 
-      if (data?.board_state) {
-        const boardState = data.board_state as BoardState;
+      if (participants && participants.length > 0) {
+        console.log('Found board state for team:', teamId, participants[0].board_state);
+        const boardState = participants[0].board_state as BoardState;
         if (boardState.ships && boardState.ships.length > 0) {
+          console.log('Setting placed ships from database:', boardState.ships);
           setPlacedShips(boardState.ships);
           setShips(prevShips => 
             prevShips.map(ship => ({
@@ -100,14 +125,29 @@ export function useShipPlacement(teamId: string | null) {
             }))
           );
           
-          if (boardState.ships.length === initialShips.length) {
-            setIsReady(true);
-          }
+          // Set ready status based on team data
+          setIsReady(teamData.is_ready);
+          console.log('Team ready status set to:', teamData.is_ready);
+        } else {
+          // Reset ships if there are no ships in the database
+          console.log('No ships found in board state, resetting');
+          setPlacedShips([]);
+          setShips(initialShips);
+          setIsReady(false);
         }
+      } else {
+        // Reset ships if there is no board state
+        console.log('No board state found, resetting ships');
+        setPlacedShips([]);
+        setShips(initialShips);
+        setIsReady(false);
       }
     } catch (error) {
       console.error('Error in loadExistingShips:', error);
       toast.error("Failed to load ship placements");
+    } finally {
+      setIsInitialLoad(false);
+      setIsLoadingShips(false);
     }
   };
 
@@ -120,21 +160,33 @@ export function useShipPlacement(teamId: string | null) {
       setPlacedShips([]);
       setIsReady(false);
 
-      // Reset database state
-      const boardState = {
-        ships: [],
-        hits: []
-      };
+      console.log('Resetting ships and ready status for team ID:', teamId);
 
-      const { error } = await supabase
+      // Delete all game participants for this team to ensure clean state
+      const { error: deleteError } = await supabase
         .from('game_participants')
-        .update({
-          board_state: boardState,
-          updated_at: new Date().toISOString()
-        })
+        .delete()
         .eq('team_id', teamId);
 
-      if (error) throw error;
+      if (deleteError) {
+        console.error('Error deleting game participants:', deleteError);
+        throw deleteError;
+      }
+
+      // Also update the team's ready status to false
+      const { error: teamError } = await supabase
+        .from('teams')
+        .update({ 
+          is_ready: false
+        })
+        .eq('id', teamId);
+        
+      if (teamError) {
+        console.error('Error resetting team ready status:', teamError);
+        throw teamError;
+      }
+      
+      console.log('Successfully reset ships and ready status for team ID:', teamId);
     } catch (error: any) {
       console.error('Error resetting ships:', error);
       toast.error("Failed to reset ships");

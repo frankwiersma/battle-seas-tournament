@@ -236,7 +236,16 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
                 <div key={num} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{num}</div>
               ))}
             </div>
-            <div className="grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg">
+            <div className={`grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg relative`}>
+              {isOpponentBoard && (
+                <div className="absolute inset-0 rounded-xl overflow-hidden z-0">
+                  <img 
+                    src="/Bucharest_low_res_map (1).png" 
+                    alt="Bucharest Map" 
+                    className="w-full h-full object-cover opacity-40"
+                  />
+                </div>
+              )}
               {board.map((row, y) => 
                 row.map((cell, x) => (
                   <CellComponent

@@ -1,8 +1,10 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import GameBoard from "@/components/GameBoard";
 import type { PlacedShip } from "@/types/game";
 import { Button } from "./ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { Map } from "lucide-react";
+import FullMapView from "./game/FullMapView";
 
 interface BattlePhaseProps {
   myShips: PlacedShip[];
@@ -41,6 +43,8 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
   onRestart,
   teamId = null
 }) => {
+  const [showFullMap, setShowFullMap] = useState(false);
+
   // Reset team ready status when victory/defeat window is shown
   useEffect(() => {
     if ((gameWon || gameLost) && teamId) {
@@ -92,13 +96,25 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
           />
         </div>
         <div className="flex flex-col items-center">
-          <h2 className="text-2xl font-semibold text-white mb-4">Enemy Waters</h2>
+          <div className="flex items-center mb-4">
+            <h2 className="text-2xl font-semibold text-white">Enemy Waters</h2>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowFullMap(true)}
+              className="ml-4 text-white border-white/40 hover:bg-white/10"
+            >
+              <Map className="h-4 w-4 mr-2" />
+              Full Map
+            </Button>
+          </div>
           <GameBoard
             isCurrentPlayer={true}
             placementPhase={false}
             hits={myHits}
             onCellClick={onCellClick}
             showShips={false}
+            isOpponentBoard={true}
           />
         </div>
       </div>
@@ -122,6 +138,9 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
           </div>
         </div>
       )}
+
+      {/* Full Map View */}
+      {showFullMap && <FullMapView onClose={() => setShowFullMap(false)} hits={myHits} />}
     </div>
   );
 };

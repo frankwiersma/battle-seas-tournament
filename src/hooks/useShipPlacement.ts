@@ -25,6 +25,70 @@ export function useShipPlacement(teamId: string | null) {
     }
   }, [teamId]);
 
+  // NEW EFFECT: Subscribe to game status changes to detect game resets
+  useEffect(() => {
+    if (!teamId) return;
+    
+    // Find current game to monitor
+    const findCurrentGame = async () => {
+      try {
+        const { data: participants } = await supabase
+          .from('game_participants')
+          .select('game_id')
+          .eq('team_id', teamId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+          
+        if (participants && participants.length > 0) {
+          const gameId = participants[0].game_id;
+          
+          // Subscribe to game status changes
+          const gameStatusSubscription = supabase
+            .channel(`game-status-${gameId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'games',
+                filter: `id=eq.${gameId}`
+              },
+              async (payload) => {
+                const newStatus = (payload.new as any).status;
+                console.log(`Game ${gameId} status changed to: ${newStatus}`);
+                
+                // If game status changed to 'waiting' (reset), clear ships immediately
+                if (newStatus === 'waiting') {
+                  console.log('Game reset detected, clearing ships immediately');
+                  setShips(initialShips.map(ship => ({ ...ship })));
+                  setPlacedShips([]);
+                  setIsReady(false);
+                }
+              }
+            )
+            .subscribe();
+            
+          // Return unsubscribe function
+          return () => {
+            gameStatusSubscription.unsubscribe();
+          };
+        }
+      } catch (error) {
+        console.error('Error setting up game status subscription:', error);
+      }
+    };
+    
+    // Set up subscription and store cleanup function
+    const cleanupPromise = findCurrentGame();
+    
+    // Return cleanup function
+    return () => {
+      cleanupPromise.then(cleanup => {
+        if (cleanup) cleanup();
+      });
+    };
+  }, [teamId]);
+
   // Sync with database only when placedShips changes and it's not during initial loading
   useEffect(() => {
     if (!teamId || isInitialLoad || isLoadingShips || placedShips.length === 0) return;

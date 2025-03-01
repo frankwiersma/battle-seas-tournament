@@ -194,6 +194,18 @@ export function useGameStateSynchronizer(
         setGameWon(false);
         setGameLost(false);
         
+        // IMPORTANT: When game transitions to waiting, explicitly reset the game state
+        // This ensures both teams get an empty grid for ship placement
+        setGameState({
+          myShips: [],
+          myHits: [],
+          enemyHits: [],
+        });
+        
+        // Ensure we're in placement phase when game status is waiting
+        setGameStarted(false);
+        setIsPlacementPhase(true);
+        
         // Check if the game should be started
         const gameParticipants = game.game_participants;
         const allShipsPlaced = gameParticipants.length === 2 && 
@@ -241,7 +253,9 @@ export function useGameStateSynchronizer(
       const myParticipant = gameParticipants.find((p: { team_id: string }) => p.team_id === teamId);
       const enemyParticipant = gameParticipants.find((p: { team_id: string }) => p.team_id !== teamId);
 
-      if (myParticipant && enemyParticipant) {
+      // Only update game state with board data if game is not in 'waiting' status
+      // This prevents ships from reappearing after a game reset
+      if (myParticipant && enemyParticipant && game.status !== 'waiting') {
         const myBoardState = myParticipant.board_state as unknown as BoardState;
         const enemyBoardState = enemyParticipant.board_state as unknown as BoardState;
 
@@ -508,6 +522,43 @@ export function useGameStateSynchronizer(
       )
       .subscribe();
       
+    // Subscribe to game status changes to detect resets
+    const gameStatusSubscription = supabase
+      .channel('game-status-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'games',
+        },
+        async (payload) => {
+          if (payload.new && (payload.new as any).id === currentGameId) {
+            console.log('Game status changed:', (payload.new as any).status);
+            
+            // If game status changed to 'waiting', immediately clear ships
+            if ((payload.new as any).status === 'waiting') {
+              console.log('Game reset detected, clearing ships immediately');
+              
+              // Force clearing the game state without waiting for full reload
+              setGameWon(false);
+              setGameLost(false);
+              setGameState({
+                myShips: [],
+                myHits: [],
+                enemyHits: [],
+              });
+              setGameStarted(false);
+              setIsPlacementPhase(true);
+            }
+            
+            // Also do a full state reload to sync with database
+            await debouncedLoadGameState();
+          }
+        }
+      )
+      .subscribe();
+      
     // Subscribe to game_participants creation events
     const insertSubscription = supabase
       .channel('game-participant-inserts')
@@ -551,6 +602,7 @@ export function useGameStateSynchronizer(
     return () => {
       updateSubscription.unsubscribe();
       insertSubscription.unsubscribe();
+      gameStatusSubscription.unsubscribe();
     };
   }, [teamId, currentGameId, placedShips, setGameState, setScores, setGameWon, setGameLost, setCurrentGameId, setGameStarted, setIsPlacementPhase]);
 

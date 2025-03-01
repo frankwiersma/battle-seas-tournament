@@ -98,11 +98,29 @@ const Index = () => {
 
   const handleRotateShip = (shipId: string) => {
     if (isReady) return;
-    setShips(ships.map(ship => 
-      ship.id === shipId 
-        ? { ...ship, isVertical: !ship.isVertical }
-        : ship
-    ));
+    
+    console.log("Rotating ship:", shipId);
+    
+    // Find the ship and toggle its orientation
+    const shipToRotate = ships.find(ship => ship.id === shipId);
+    if (!shipToRotate) {
+      console.error("Ship not found:", shipId);
+      return;
+    }
+    
+    const newIsVertical = !shipToRotate.isVertical;
+    console.log("Changing orientation from", shipToRotate.isVertical ? "vertical" : "horizontal", "to", newIsVertical ? "vertical" : "horizontal");
+    
+    // Update the ship's orientation
+    setShips(prevShips => 
+      prevShips.map(ship =>
+        ship.id === shipId 
+          ? { ...ship, isVertical: newIsVertical }
+          : ship
+      )
+    );
+    
+    console.log("Ship rotation updated");
   };
 
   const handleReadyClick = async () => {
@@ -507,11 +525,20 @@ const Index = () => {
   }
 
   return (
-    <DndProvider backend={isMobile ? TouchBackend : HTML5Backend}>
+    <DndProvider 
+      backend={isMobile ? TouchBackend : HTML5Backend} 
+      options={isMobile ? { 
+        enableMouseEvents: true, 
+        delayTouchStart: 50,
+        ignoreContextMenu: true,
+        enableHoverOutsideTarget: true,
+        touchSlop: 15
+      } : undefined}
+    >
       <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4">
         <div className="max-w-[1800px] mx-auto">
           <header className="text-center mb-8 animate-fade-in">
-            <h1 className="text-4xl font-bold text-white mb-2">Sea Battle Tournament</h1>
+            <h1 className="text-4xl font-bold text-white mb-2">Sea Battle</h1>
             <div className="text-white/80 space-y-2">
               <p className="text-xl font-semibold">You are Team {teamLetter}</p>
               <p>Playing against: Team {
@@ -519,9 +546,14 @@ const Index = () => {
                 teamLetter ? getOpposingTeamLetter(teamLetter) : ''
               }</p>
               {currentGameId && (
-                <p className="text-sm bg-black/20 px-3 py-1 rounded inline-block mt-1">
-                  Game ID: <span className="font-mono">{currentGameId}</span>
-                </p>
+                <div className="relative inline-block group">
+                  <button className="text-xs bg-black/20 w-6 h-6 rounded-full inline-flex items-center justify-center">
+                    i
+                  </button>
+                  <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    Game ID: <span className="font-mono">{currentGameId}</span>
+                  </div>
+                </div>
               )}
               <p className="text-sm">
                 {isPlacementPhase 
@@ -532,20 +564,7 @@ const Index = () => {
               </p>
             </div>
             <div className="mt-4 flex justify-center gap-2">
-              <button
-                onClick={handleResetGame}
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              >
-                Reset Game
-              </button>
-              
-              {/* Admin link */}
-              <Link
-                to="/admin"
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm"
-              >
-                Admin Panel
-              </Link>
+              {/* Reset Game button removed but functionality preserved */}
             </div>
           </header>
 

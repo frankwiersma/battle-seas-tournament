@@ -123,9 +123,17 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   }));
 
   const canPlaceShip = useCallback((x: number, y: number, length: number, isVertical: boolean): boolean => {
+    console.log("Checking if can place ship at:", x, y, "length:", length, "orientation:", isVertical ? "vertical" : "horizontal");
+    
     // Check board boundaries
-    if (isVertical && y + length > 5) return false;
-    if (!isVertical && x + length > 5) return false;
+    if (isVertical && y + length > 5) {
+      console.log("Cannot place: vertical ship would exceed bottom boundary");
+      return false;
+    }
+    if (!isVertical && x + length > 5) {
+      console.log("Cannot place: horizontal ship would exceed right boundary");
+      return false;
+    }
 
     // Get all positions for the new ship
     const newPositions = [];
@@ -136,29 +144,23 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
       });
     }
 
-    // Check if any of these positions or their adjacent cells are occupied
+    console.log("Checking positions:", newPositions);
+
+    // Check if any of these positions are occupied
     for (const pos of newPositions) {
       // Check if this position is occupied
-      if (boardRef.current[pos.y][pos.x].hasShip) return false;
-
-      // Check adjacent cells
-      for (let i = -1; i <= 1; i++) {
-        for (let j = -1; j <= 1; j++) {
-          const checkX = pos.x + i;
-          const checkY = pos.y + j;
-
-          // Skip if outside board
-          if (checkX < 0 || checkX >= 5 || checkY < 0 || checkY >= 5) continue;
-
-          // Check if adjacent position is occupied
-          if (boardRef.current[checkY][checkX].hasShip) return false;
-        }
+      if (boardRef.current[pos.y][pos.x].hasShip) {
+        console.log("Cannot place: position", pos.x, pos.y, "is already occupied");
+        return false;
       }
     }
 
+    console.log("Ship can be placed");
     return true;
   }, []);
   const placeShip = (x: number, y: number, ship: ShipDragItem) => {
+    console.log("Placing ship:", ship.id, "at", x, y, "orientation:", ship.isVertical ? "vertical" : "horizontal");
+    
     if (!canPlaceShip(x, y, ship.length, ship.isVertical)) {
       toast.error("Cannot place ship here!");
       return;
@@ -171,6 +173,8 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
         y: ship.isVertical ? y + i : y
       });
     }
+
+    console.log("Ship positions:", positions);
 
     // Notify parent component of the placement
     onShipPlaced?.(ship.id, positions);
@@ -189,25 +193,35 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   };
 
   const letters = ['A', 'B', 'C', 'D', 'E'];
+  
+  // Calculate cell size based on screen size
+  const cellSizeClass = isMobile 
+    ? "w-[calc(18vw-4px)] h-[calc(18vw-4px)] max-w-16 max-h-16" 
+    : "w-16 h-16";
+    
+  // Calculate letter spacing to match cell size
+  const letterSizeClass = isMobile
+    ? "w-[calc(18vw-2px)] h-8 max-w-16"
+    : "w-16 h-8";
 
   return (
-    <div className="p-4">
+    <div className="p-1 sm:p-2 w-full max-w-full overflow-hidden">
       {placementPhase ? (
         <ShipPlacement onPlaceShip={placeShip} canPlaceShip={canPlaceShip}>
-          <div className="relative">
-            <div className="flex justify-center items-center mb-2">
-              <div className="w-12"></div>
+          <div className="relative disable-text-selection w-full">
+            <div className="flex justify-center items-center mb-1 pl-3">
+              <div className="w-3"></div>
               {letters.map((letter) => (
-                <div key={letter} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{letter}</div>
+                <div key={letter} className={`${letterSizeClass} flex items-center justify-center font-bold text-sm sm:text-base text-white tracking-widest`}>{letter}</div>
               ))}
             </div>
             <div className="flex">
-              <div className="flex flex-col justify-around mr-2">
+              <div className="flex flex-col justify-around mr-0">
                 {[1, 2, 3, 4, 5].map((num) => (
-                  <div key={num} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{num}</div>
+                  <div key={num} className="w-3 h-[calc(18vw-4px)] max-h-16 flex items-center justify-start font-bold text-sm sm:text-base text-white">{num}</div>
                 ))}
               </div>
-              <div className="grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg">
+              <div className="grid grid-cols-5 gap-0.5 bg-primary/5 p-1 sm:p-2 rounded-xl backdrop-blur-md shadow-lg mobile-touch-fix w-[calc(90vw-20px)] max-w-[400px]">
                 {board.map((row, y) => 
                   row.map((cell, x) => (
                     <CellComponent
@@ -223,20 +237,20 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
           </div>
         </ShipPlacement>
       ) : (
-        <div className="relative">
-          <div className="flex justify-center items-center mb-2">
-            <div className="w-12"></div>
+        <div className="relative disable-text-selection w-full">
+          <div className="flex justify-center items-center mb-1 pl-3">
+            <div className="w-3"></div>
             {letters.map((letter) => (
-              <div key={letter} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{letter}</div>
+              <div key={letter} className={`${letterSizeClass} flex items-center justify-center font-bold text-sm sm:text-base text-white tracking-widest`}>{letter}</div>
             ))}
           </div>
           <div className="flex">
-            <div className="flex flex-col justify-around mr-2">
+            <div className="flex flex-col justify-around mr-0">
               {[1, 2, 3, 4, 5].map((num) => (
-                <div key={num} className="w-12 h-12 flex items-center justify-center font-bold text-lg text-white">{num}</div>
+                <div key={num} className="w-3 h-[calc(18vw-4px)] max-h-16 flex items-center justify-start font-bold text-sm sm:text-base text-white">{num}</div>
               ))}
             </div>
-            <div className={`grid grid-cols-5 gap-2 bg-primary/5 p-4 rounded-xl backdrop-blur-md shadow-lg relative`}>
+            <div className={`grid grid-cols-5 gap-0.5 bg-primary/5 p-1 sm:p-2 rounded-xl backdrop-blur-md shadow-lg relative mobile-touch-fix w-[calc(90vw-20px)] max-w-[400px]`}>
               {isOpponentBoard && (
                 <div className="absolute inset-0 rounded-xl overflow-hidden z-0">
                   <img 

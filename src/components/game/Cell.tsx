@@ -1,4 +1,5 @@
 import React from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export interface CellProps {
   x: number;
@@ -24,9 +25,13 @@ export const Cell: React.FC<CellProps> = ({
   isOver,
   canDrop
 }) => {
+  const isMobile = useIsMobile();
+  
   let cellClasses = [
-    "w-16 h-16 border border-opacity-20 border-white rounded-lg transition-all duration-300 backdrop-blur-sm",
-    "relative"
+    isMobile ? "w-[calc(18vw-2px)] h-[calc(18vw-2px)] max-w-16 max-h-16" : "w-16 h-16",
+    "border border-opacity-10 border-white rounded-md transition-all duration-300 backdrop-blur-sm",
+    "relative",
+    "touch-manipulation"
   ];
 
   if (isHit) {
@@ -50,9 +55,13 @@ export const Cell: React.FC<CellProps> = ({
       data-coords={`${x},${y}`}
       className={cellClasses.join(" ")}
       onClick={onClick}
+      style={{ 
+        WebkitTapHighlightColor: 'transparent',
+        touchAction: 'manipulation'
+      }}
     >
       {hasShip && showShips && (
-        <div className="absolute inset-1 rounded bg-green-300/20 border-2 border-green-300/50" />
+        <div className="absolute inset-1 rounded bg-green-300/20 border border-green-300/50" />
       )}
       {isHit && (
         <div className="absolute inset-0 flex items-center justify-center">

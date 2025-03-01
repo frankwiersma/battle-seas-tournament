@@ -23,6 +23,10 @@ export const ShipPlacement: React.FC<ShipPlacementProps> = ({ onPlaceShip, canPl
       const element = document.elementFromPoint(x, y);
       const cellCoords = element?.getAttribute("data-coords")?.split(",").map(Number);
       if (!cellCoords) return;
+      
+      console.log("Dropping ship:", item.id, "with orientation:", item.isVertical ? "vertical" : "horizontal");
+      
+      // Pass the exact same item from the drag source to preserve orientation
       onPlaceShip(cellCoords[0], cellCoords[1], item);
     },
     collect: (monitor) => ({

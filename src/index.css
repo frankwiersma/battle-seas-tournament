@@ -99,3 +99,38 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Add cross-browser mobile touch compatibility */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  touch-action: manipulation;
+  overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+}
+
+.drop-target {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+
+/* Improve mobile drag-and-drop visibility */
+.dragging {
+  opacity: 0.7;
+  transform: scale(1.05);
+}
+
+/* Prevent text selection during drag operations */
+.disable-text-selection {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Mobile specific adjustments */
+@media (max-width: 768px) {
+  .mobile-touch-fix {
+    touch-action: manipulation;
+  }
+}

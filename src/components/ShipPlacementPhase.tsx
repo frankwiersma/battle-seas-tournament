@@ -38,6 +38,12 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   const gameBoardRef = useRef<{ resetBoard: () => void }>(null);
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {
+    console.log("Ship placed:", shipId, "with positions:", positions);
+    
+    // Determine if the ship is vertical based on positions
+    const isVertical = positions.length > 1 && positions[0].x === positions[1].x;
+    console.log("Ship orientation detected:", isVertical ? "vertical" : "horizontal");
+    
     // Update placedShips - keep all other ships and add/update this one
     setPlacedShips(prevPlacedShips => {
       const otherShips = prevPlacedShips.filter(ship => ship.id !== shipId);
@@ -48,7 +54,7 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
     setShips(prevShips => 
       prevShips.map(ship =>
         ship.id === shipId 
-          ? { ...ship, isPlaced: true }
+          ? { ...ship, isPlaced: true, isVertical }
           : ship
       )
     );
@@ -63,7 +69,8 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   return (
     <div className="space-y-4 animate-fade-in">
       <h2 className="text-2xl font-semibold text-white mb-4">Your Fleet</h2>
-      <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm">
+      
+      <div className="flex flex-wrap gap-4 p-4 bg-white/10 rounded-xl backdrop-blur-sm mobile-touch-fix disable-text-selection">
         {ships.filter(ship => !ship.isPlaced).map((ship) => (
           <Ship
             key={ship.id}

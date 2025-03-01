@@ -132,33 +132,9 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
   useEffect(() => {
     if (!teamId) return;
 
-    // Subscribe to game_participants changes
-    const subscription = supabase
-      .channel('game-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'game_participants',
-        },
-        (payload) => {
-          console.log('Game update received:', payload);
-          loadInitialState();  // This is causing the repeated requests
-        }
-      )
-      .subscribe();
+    let gameId: string | null = null;
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [teamId]);
-
-  // Add initial state loading to useGamePhase
-  useEffect(() => {
-    if (!teamId) return;
-
-    const loadInitialState = async () => {
+    const loadGameState = async () => {
       try {
         // First get the current game participant
         const { data: participant } = await supabase
@@ -168,6 +144,9 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
           .single();
 
         if (!participant?.game_id) return;
+        
+        // Store game ID for subscription
+        gameId = participant.game_id;
 
         // Then get the game with all participants
         const { data: game } = await supabase
@@ -183,7 +162,7 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
               board_state
             )
           `)
-          .eq('id', participant.game_id)
+          .eq('id', gameId)
           .single();
 
         if (!game?.game_participants) return;
@@ -195,6 +174,11 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
         if (myParticipant && enemyParticipant) {
           const myBoardState = myParticipant.board_state as unknown as BoardState;
           const enemyBoardState = enemyParticipant.board_state as unknown as BoardState;
+
+          console.log('Loading game state:', {
+            myBoardState,
+            enemyBoardState
+          });
 
           // Set game state with correct ship placements
           setGameState({
@@ -219,23 +203,42 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
             enemyShipsSunk: enemySunkShips
           });
 
-          // Check if game is in progress
-          if (myHits.length > 0 || enemyHits.length > 0) {
-            setGameStarted(true);
-            setIsPlacementPhase(false);
-          }
-
           // Check if game is won
           if (mySunkShips === 3) {
             setGameWon(true);
           }
         }
       } catch (error) {
-        console.error('Error loading initial game state:', error);
+        console.error('Error loading game state:', error);
       }
     };
 
-    loadInitialState();
+    // Initial load to get game ID and state
+    loadGameState().then(() => {
+      if (!gameId) return;
+
+      // Subscribe to game_participants changes
+      const subscription = supabase
+        .channel('game-updates')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'game_participants',
+            filter: `game_id=eq.${gameId}`
+          },
+          async (payload) => {
+            console.log('Game update received:', payload);
+            await loadGameState();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    });
   }, [teamId]);
 
   const checkGameStart = async () => {

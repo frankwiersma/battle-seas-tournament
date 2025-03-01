@@ -62,7 +62,9 @@ const Index = () => {
     gameWon,
     gameLost,
     loadExistingShips,
-    currentGameId
+    currentGameId,
+    setGameWon,
+    setGameLost
   } = useGameState(teamId);
 
   // Add debug logging
@@ -291,12 +293,52 @@ const Index = () => {
     }
   };
 
-  const handleResetShips = () => {
+  const handleUnreadyClick = async () => {
+    console.log('Unready button clicked, current isReady state:', isReady);
+    
+    try {
+      if (!teamId) {
+        toast.error("Team authentication error!");
+        return;
+      }
+
+      console.log('🚨 Updating team ready status to FALSE for teamId:', teamId);
+      
+      // Use the forceUpdateTeamReadyStatus function to set ready to false
+      const updateSuccess = await forceUpdateTeamReadyStatus(teamId, false);
+      
+      if (!updateSuccess) {
+        console.error('Failed to update team status to not ready');
+        toast.error('Could not update status. Please try again or contact an administrator.');
+        return;
+      }
+
+      console.log('Team ready status updated to NOT READY successfully in database');
+      
+      // Update local state first
+      setIsReady(false);
+      
+      // We don't want to reset the ships here, just keep the existing placements
+      // but allow the user to modify them
+      
+      toast.success('You can now modify your ships placement!');
+      
+      // No need to call loadExistingShips() as we want to keep the current ships
+      // This allows users to make small adjustments without losing their entire layout
+      
+    } catch (err) {
+      console.error('Error in handleUnreadyClick:', err);
+      toast.error('An error occurred while updating status. Please try again.');
+    }
+  };
+
+  const handleResetShips = async () => {
     if (isReady) {
       toast.error("Cannot reset ships after declaring ready!");
       return;
     }
-    resetShips();
+    await resetShips();
+    toast.success("Ships have been reset!");
   };
 
   const handleResetGame = async () => {
@@ -320,7 +362,9 @@ const Index = () => {
         return;
       }
 
-      // Reset local state first
+      // Reset local state first - IMPORTANT: Reset in correct order
+      setGameWon(false);  // Add this line to reset win state
+      setGameLost(false); // Add this line to reset loss state
       setIsReady(false);
       resetShips();
       setGameState({
@@ -328,6 +372,7 @@ const Index = () => {
         myHits: [],
         enemyHits: [],
       });
+      setPlacedShips([]); // Add this line to explicitly clear placed ships
       setIsPlacementPhase(true);
       setGameStarted(false);
 
@@ -403,7 +448,8 @@ const Index = () => {
           .from('games')
           .update({ 
             status: 'waiting',
-            winner_team_id: null
+            winner_team_id: null,
+            current_team_id: null  // Also reset current team ID
           })
           .eq('id', gameId);
           
@@ -514,6 +560,7 @@ const Index = () => {
                 onReadyClick={handleReadyClick}
                 onResetShips={handleResetShips}
                 onRotateShip={handleRotateShip}
+                onUnreadyClick={handleUnreadyClick}
               />
             </div>
           ) : (
@@ -527,6 +574,7 @@ const Index = () => {
                 gameWon={gameWon}
                 gameLost={gameLost}
                 onRestart={handleResetGame}
+                teamId={teamId}
               />
             </div>
           )}

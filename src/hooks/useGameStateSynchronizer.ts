@@ -1,7 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { GameState, BoardState, GameScores, PlacedShip } from "@/types/game";
 import { calculateSunkShips } from "@/utils/gameCalculations";
+
+// Add a debounce utility
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: any[]) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
 
 /**
  * Hook for synchronizing game state with the database
@@ -18,6 +27,70 @@ export function useGameStateSynchronizer(
   setIsPlacementPhase: (value: boolean) => void,
   placedShips: PlacedShip[]
 ) {
+  // Track last processed state to avoid redundant updates
+  const lastProcessedStateRef = useRef<string>("");
+  // Track if we're currently loading game state
+  const isLoadingGameState = useRef(false);
+
+  // Helper function to check if game can start and start it if possible
+  const checkIfGameCanStart = async (participants: any[], gameId: string) => {
+    // Check if all ships are placed
+    const allShipsPlaced = participants.every((p: { board_state: any; team_id: string }) => {
+      const boardState = p.board_state as unknown as BoardState;
+      const hasAllShips = boardState?.ships?.length === 3;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Team ${p.team_id} has ${boardState?.ships?.length || 0} ships placed.`);
+      }
+      return hasAllShips;
+    });
+    
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('All ships placed:', allShipsPlaced);
+    }
+    
+    if (!allShipsPlaced) {
+      console.log('Not all ships are placed. Game cannot start yet.');
+      return;
+    }
+    
+    // Get teams ready status
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('is_ready, id')
+      .in('id', participants.map((p: { team_id: string }) => p.team_id));
+
+    if (teamsError) {
+      console.error('Error checking team status:', teamsError);
+      return;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Teams ready status:', teams);
+    }
+
+    // Both teams have joined and placed all ships, check if both are ready
+    const allTeamsReady = teams?.length === 2 && teams.every(t => t.is_ready);
+    console.log('All teams ready:', allTeamsReady);
+    
+    if (!allTeamsReady) {
+      return;
+    }
+    
+    // Update game status to in progress
+    console.log('All conditions met. Starting game...');
+    
+    const { error: updateError } = await supabase
+      .from('games')
+      .update({ status: 'in_progress' })
+      .eq('id', gameId);
+      
+    if (updateError) {
+      console.error('Error updating game status:', updateError);
+    } else {
+      console.log('Game started!');
+    }
+  };
+
   // Subscribe to game state updates
   useEffect(() => {
     if (!teamId) return;
@@ -26,12 +99,46 @@ export function useGameStateSynchronizer(
 
     // Helper function to process game data
     const processGameData = (game: any) => {
+      // Skip processing if this is the same data we already processed
+      const gameStateHash = JSON.stringify({
+        status: game.status,
+        winner_team_id: game.winner_team_id,
+        participants: game.game_participants.map((p: any) => ({
+          team_id: p.team_id,
+          board_state: p.board_state
+        }))
+      });
+      
+      if (gameStateHash === lastProcessedStateRef.current) {
+        console.log('State unchanged, skipping redundant update');
+        return;
+      }
+      
+      // Update last processed state
+      lastProcessedStateRef.current = gameStateHash;
+
       // Check game status and winner
       if (game.status === 'completed' && game.winner_team_id) {
         if (game.winner_team_id === teamId) {
           setGameWon(true);
         } else {
           setGameLost(true);
+        }
+        
+        // Reset team ready status when game is completed
+        if (teamId) {
+          console.log('Game completed, resetting this team\'s ready status');
+          supabase
+            .from('teams')
+            .update({ is_ready: false })
+            .eq('id', teamId)
+            .then(({ error }) => {
+              if (error) {
+                console.error('Error resetting team ready status:', error);
+              } else {
+                console.log('Team ready status reset to false');
+              }
+            });
         }
       } else if (game.status === 'in_progress') {
         setGameStarted(true);
@@ -83,6 +190,10 @@ export function useGameStateSynchronizer(
           }
         }
       } else if (game.status === 'waiting') {
+        // Clear any game won/lost state when a game transitions to waiting
+        setGameWon(false);
+        setGameLost(false);
+        
         // Check if the game should be started
         const gameParticipants = game.game_participants;
         const allShipsPlaced = gameParticipants.length === 2 && 
@@ -134,10 +245,12 @@ export function useGameStateSynchronizer(
         const myBoardState = myParticipant.board_state as unknown as BoardState;
         const enemyBoardState = enemyParticipant.board_state as unknown as BoardState;
 
-        console.log('Board states:', {
-          myBoardState,
-          enemyBoardState
-        });
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Board states:', {
+            myBoardState,
+            enemyBoardState
+          });
+        }
 
         // Set game state with correct ship placements
         setGameState({
@@ -150,8 +263,17 @@ export function useGameStateSynchronizer(
         const myHits = enemyBoardState.hits || [];
         const enemyHits = myBoardState.hits || [];
         
-        const mySunkShips = calculateSunkShips(myHits, enemyBoardState.ships || []);
-        const enemySunkShips = calculateSunkShips(enemyHits, myBoardState.ships || []);
+        // Fix for type mismatch in calculateSunkShips
+        // Convert hits to match the expected format of the ship positions
+        // We're using the parameters in reversed order from what the error shows
+        const mySunkShips = calculateSunkShips(
+          enemyBoardState.ships || [], // ships parameter
+          myHits // hits parameter
+        );
+        const enemySunkShips = calculateSunkShips(
+          myBoardState.ships || [], // ships parameter
+          enemyHits // hits parameter
+        );
 
         setScores({
           myScore: myHits.filter(h => h.isHit).length,
@@ -187,13 +309,25 @@ export function useGameStateSynchronizer(
       }
     };
 
+    // Initialize loadGameState with debouncing to prevent rapid repeated calls
     const loadGameState = async () => {
+      // If already loading, skip this call
+      if (isLoadingGameState.current) {
+        return;
+      }
+
+      isLoadingGameState.current = true;
+      
       try {
-        console.log('Loading game state...');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Loading game state...');
+        }
         
         // If we have a currentGameId, use it directly
         if (currentGameId) {
-          console.log('Using current game ID:', currentGameId);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('Using current game ID:', currentGameId);
+          }
           gameId = currentGameId;
           
           // Get the game with all participants
@@ -215,10 +349,13 @@ export function useGameStateSynchronizer(
 
           if (gameError) {
             console.error('Error fetching game with ID:', gameId, gameError);
+            isLoadingGameState.current = false;
             return;
           }
           
-          console.log('Game data from currentGameId:', game);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('Game data from currentGameId:', game);
+          }
           
           // Check if we have a participant in this game
           const myParticipant = game.game_participants.find(p => p.team_id === teamId);
@@ -245,17 +382,20 @@ export function useGameStateSynchronizer(
               
             if (insertError) {
               console.error('Error creating participant for existing game:', insertError);
+              isLoadingGameState.current = false;
               return;
             }
             
             console.log('Created participant for existing game');
             
             // Reload the game data
+            isLoadingGameState.current = false;
             return loadGameState();
           }
           
           // Process the game data
           processGameData(game);
+          isLoadingGameState.current = false;
           return;
         }
         
@@ -269,6 +409,7 @@ export function useGameStateSynchronizer(
 
         if (participantError) {
           console.error('Error fetching participant:', participantError);
+          isLoadingGameState.current = false;
           return;
         }
 
@@ -279,11 +420,14 @@ export function useGameStateSynchronizer(
             myHits: [],
             enemyHits: [],
           });
+          isLoadingGameState.current = false;
           return;
         }
 
         const currentParticipant = myParticipants[0];
-        console.log('Current participant:', currentParticipant);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Current participant:', currentParticipant);
+        }
 
         if (!currentParticipant?.game_id) {
           console.log('No active game found');
@@ -292,6 +436,7 @@ export function useGameStateSynchronizer(
             myHits: [],
             enemyHits: [],
           });
+          isLoadingGameState.current = false;
           return;
         }
         
@@ -318,13 +463,17 @@ export function useGameStateSynchronizer(
 
         if (gameError) {
           console.error('Error fetching game:', gameError);
+          isLoadingGameState.current = false;
           return;
         }
 
-        console.log('Game data:', game);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Game data:', game);
+        }
 
         if (!game?.game_participants) {
           console.log('No game participants found');
+          isLoadingGameState.current = false;
           return;
         }
 
@@ -332,8 +481,13 @@ export function useGameStateSynchronizer(
         processGameData(game);
       } catch (error) {
         console.error('Error loading game state:', error);
+      } finally {
+        isLoadingGameState.current = false;
       }
     };
+
+    // Debounced version of loadGameState
+    const debouncedLoadGameState = debounce(loadGameState, 300);
 
     // Initial load to get game ID and state
     loadGameState();
@@ -349,7 +503,7 @@ export function useGameStateSynchronizer(
           table: 'game_participants',
         },
         async () => {
-          await loadGameState();
+          await debouncedLoadGameState();
         }
       )
       .subscribe();
@@ -365,12 +519,14 @@ export function useGameStateSynchronizer(
           table: 'game_participants',
         },
         async (payload) => {
-          console.log('New participant created:', payload);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('New participant created:', payload);
+          }
           
           // If we have a game ID, check if this new participant is for our game
           if (currentGameId && payload.new && (payload.new as any).game_id === currentGameId) {
             console.log('New participant joined our game. Checking game status...');
-            await loadGameState();
+            await debouncedLoadGameState();
             
             // Get all participants for this game
             const { data: participants } = await supabase
@@ -386,7 +542,7 @@ export function useGameStateSynchronizer(
             // If we don't have a game ID yet, but this is our participant, update our game ID
             console.log('Our participant was created. Setting game ID.');
             setCurrentGameId((payload.new as any).game_id);
-            await loadGameState();
+            await debouncedLoadGameState();
           }
         }
       )
@@ -398,134 +554,6 @@ export function useGameStateSynchronizer(
     };
   }, [teamId, currentGameId, placedShips, setGameState, setScores, setGameWon, setGameLost, setCurrentGameId, setGameStarted, setIsPlacementPhase]);
 
-  // Helper function to check if game can start and start it if possible
-  const checkIfGameCanStart = async (participants: any[], gameId: string) => {
-    // Check if all ships are placed
-    const allShipsPlaced = participants.every((p: { board_state: any; team_id: string }) => {
-      const boardState = p.board_state as unknown as BoardState;
-      const hasAllShips = boardState?.ships?.length === 3;
-      console.log(`Team ${p.team_id} has ${boardState?.ships?.length || 0} ships placed.`);
-      return hasAllShips;
-    });
-    
-    console.log('All ships placed:', allShipsPlaced);
-    
-    if (!allShipsPlaced) {
-      console.log('Not all ships are placed. Game cannot start yet.');
-      return;
-    }
-    
-    // Get teams ready status
-    const { data: teams, error: teamsError } = await supabase
-      .from('teams')
-      .select('is_ready, id')
-      .in('id', participants.map((p: { team_id: string }) => p.team_id));
-
-    if (teamsError) {
-      console.error('Error checking team status:', teamsError);
-      return;
-    }
-
-    console.log('Teams ready status:', teams);
-
-    // Both teams have joined and placed all ships, check if both are ready
-    const allTeamsReady = teams?.length === 2 && teams.every(t => t.is_ready);
-    console.log('All teams ready:', allTeamsReady);
-    
-    if (allTeamsReady) {
-      console.log('Both teams ready, updating game status to in_progress');
-      
-      const { error: gameUpdateError } = await supabase
-        .from('games')
-        .update({ 
-          status: 'in_progress'
-        })
-        .eq('id', gameId);
-
-      if (gameUpdateError) {
-        console.error('Error updating game status:', gameUpdateError);
-        return;
-      }
-
-      // Force update local state
-      setGameStarted(true);
-      setIsPlacementPhase(false);
-      console.log('Game started:', gameId);
-    } else {
-      console.log('Not all teams are ready. Checking if we need to fix team ready status...');
-      
-      // If we have two participants with ships placed, but teams aren't ready,
-      // there might be an issue with the ready status not being properly updated
-      if (participants.length === 2 && allShipsPlaced) {
-        console.log('Both teams have placed ships but not all are marked ready. Attempting to fix...');
-        
-        // Log the current ready status of each team
-        teams?.forEach(team => {
-          console.log(`Team ${team.id} ready status: ${team.is_ready}`);
-        });
-        
-        // Check if our team is ready in the database
-        const ourTeam = teams?.find(t => t.id === teamId);
-        if (ourTeam && !ourTeam.is_ready) {
-          console.log('Our team is not marked as ready in the database. Fixing...');
-          
-          // Update our team's ready status
-          const { error: updateError } = await supabase
-            .from('teams')
-            .update({ is_ready: true })
-            .eq('id', teamId);
-            
-          if (updateError) {
-            console.error('Error updating our team ready status:', updateError);
-          } else {
-            console.log('Fixed our team ready status');
-          }
-        }
-        
-        // If both teams have placed ships, force the game to start after a short delay
-        // This is a fallback mechanism in case the ready status isn't properly updated
-        if (allShipsPlaced && participants.length === 2) {
-          console.log('Both teams have placed ships. Attempting to force start the game...');
-          
-          // Force update all teams to ready
-          for (const participant of participants) {
-            const { error: forceReadyError } = await supabase
-              .from('teams')
-              .update({ is_ready: true })
-              .eq('id', participant.team_id);
-              
-            if (forceReadyError) {
-              console.error(`Error forcing team ${participant.team_id} ready:`, forceReadyError);
-            } else {
-              console.log(`Forced team ${participant.team_id} ready status to true`);
-            }
-          }
-          
-          // Force start the game
-          setTimeout(async () => {
-            console.log('Force starting game...');
-            const { error: forceStartError } = await supabase
-              .from('games')
-              .update({ 
-                status: 'in_progress'
-              })
-              .eq('id', gameId);
-              
-            if (forceStartError) {
-              console.error('Error force starting game:', forceStartError);
-            } else {
-              console.log('Game force started successfully!');
-              // Force update local state
-              setGameStarted(true);
-              setIsPlacementPhase(false);
-            }
-          }, 2000);
-        }
-      }
-    }
-  };
-
-  return {
-    checkIfGameCanStart
-  };
+  // Return the checkIfGameCanStart function for use outside the hook
+  return { checkIfGameCanStart };
 } 

@@ -4,20 +4,24 @@ import GameBoard from "@/components/GameBoard";
 import { Button } from "@/components/ui/button";
 import type { PlacedShip } from "@/types/game";
 
+// Define ship type to fix TypeScript errors
+type ShipType = {
+  id: string;
+  length: number;
+  isVertical: boolean;
+  isPlaced: boolean;
+};
+
 interface ShipPlacementPhaseProps {
-  ships: Array<{
-    id: string;
-    length: number;
-    isVertical: boolean;
-    isPlaced: boolean;
-  }>;
-  setShips: React.Dispatch<React.SetStateAction<typeof ships>>;
+  ships: ShipType[];
+  setShips: React.Dispatch<React.SetStateAction<ShipType[]>>;
   placedShips: PlacedShip[];
   setPlacedShips: React.Dispatch<React.SetStateAction<PlacedShip[]>>;
   isReady: boolean;
   onReadyClick: () => Promise<void>;
   onResetShips: () => void;
   onRotateShip: (shipId: string) => void;
+  onUnreadyClick?: () => Promise<void>;
 }
 
 const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
@@ -29,6 +33,7 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
   onRotateShip,
   onReadyClick,
   onResetShips,
+  onUnreadyClick,
 }) => {
   const gameBoardRef = useRef<{ resetBoard: () => void }>(null);
 
@@ -78,24 +83,45 @@ const ShipPlacementPhase: React.FC<ShipPlacementPhaseProps> = ({
         showShips={true}
       />
       <div className="flex gap-4">
-        <Button 
-          onClick={onReadyClick}
-          disabled={placedShips.length !== ships.length || isReady}
-          className="w-full"
-        >
-          {isReady ? "Waiting for other team..." : "Ready for Battle"}
-        </Button>
-        <Button 
-          onClick={() => {
-            onResetShips();
-            gameBoardRef.current?.resetBoard();
-          }}
-          variant="outline"
-          disabled={isReady}
-          className="w-full"
-        >
-          Reset Ships
-        </Button>
+        {isReady ? (
+          <>
+            <Button 
+              disabled={true}
+              className="w-full opacity-50"
+            >
+              Waiting for other team...
+            </Button>
+            {onUnreadyClick && (
+              <Button 
+                onClick={onUnreadyClick}
+                variant="destructive"
+                className="w-full"
+              >
+                Retract Ready Status
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <Button 
+              onClick={onReadyClick}
+              disabled={placedShips.length !== ships.length}
+              className="w-full"
+            >
+              Ready for Battle
+            </Button>
+            <Button 
+              onClick={() => {
+                onResetShips();
+                gameBoardRef.current?.resetBoard();
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              Reset Ships
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

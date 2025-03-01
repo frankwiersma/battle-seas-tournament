@@ -152,45 +152,48 @@ export function useShipPlacement(teamId: string | null) {
   };
 
   const resetShips = async () => {
-    if (!teamId) return;
-
-    try {
-      // Reset local state
-      setShips(initialShips);
-      setPlacedShips([]);
-      setIsReady(false);
-
-      console.log('Resetting ships and ready status for team ID:', teamId);
-
-      // Delete all game participants for this team to ensure clean state
-      const { error: deleteError } = await supabase
-        .from('game_participants')
-        .delete()
-        .eq('team_id', teamId);
-
-      if (deleteError) {
-        console.error('Error deleting game participants:', deleteError);
-        throw deleteError;
-      }
-
-      // Also update the team's ready status to false
-      const { error: teamError } = await supabase
-        .from('teams')
-        .update({ 
-          is_ready: false
-        })
-        .eq('id', teamId);
+    setShips(initialShips.map(ship => ({ ...ship })));
+    setPlacedShips([]);
+    
+    // Update the database to reflect the emptied ship placement
+    if (teamId) {
+      try {
+        console.log('Saving empty ship state to database for team:', teamId);
         
-      if (teamError) {
-        console.error('Error resetting team ready status:', teamError);
-        throw teamError;
+        // Get the current participants for this team
+        const { data: participants, error: participantsError } = await supabase
+          .from('game_participants')
+          .select('id, game_id')
+          .eq('team_id', teamId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+          
+        if (participantsError) {
+          console.error('Error fetching participants in resetShips:', participantsError);
+          return;
+        }
+        
+        if (participants && participants.length > 0) {
+          // Update the board state to have empty ships array
+          const emptyBoardState = { ships: [], hits: [] };
+          const { error: updateError } = await supabase
+            .from('game_participants')
+            .update({ board_state: emptyBoardState })
+            .eq('id', participants[0].id);
+            
+          if (updateError) {
+            console.error('Error updating board state in resetShips:', updateError);
+            return;
+          }
+          
+          console.log('Board state reset successfully in database');
+        }
+      } catch (error) {
+        console.error('Error in resetShips database update:', error);
       }
-      
-      console.log('Successfully reset ships and ready status for team ID:', teamId);
-    } catch (error: any) {
-      console.error('Error resetting ships:', error);
-      toast.error("Failed to reset ships");
     }
+    
+    console.log('Ships reset!');
   };
 
   const handleShipPlaced = (shipId: string, positions: { x: number; y: number }[]) => {

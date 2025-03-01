@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect } from "react";
 import GameBoard from "@/components/GameBoard";
 import type { PlacedShip } from "@/types/game";
 import { Button } from "./ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 interface BattlePhaseProps {
   myShips: PlacedShip[];
@@ -19,6 +20,7 @@ interface BattlePhaseProps {
   gameWon: boolean;
   gameLost: boolean;
   onRestart: () => void;
+  teamId?: string | null;
 }
 
 const BattlePhase: React.FC<BattlePhaseProps> = ({
@@ -37,7 +39,26 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
   gameWon = false,
   gameLost = false,
   onRestart,
+  teamId = null
 }) => {
+  // Reset team ready status when victory/defeat window is shown
+  useEffect(() => {
+    if ((gameWon || gameLost) && teamId) {
+      console.log('Victory/defeat detected, ensuring team ready status is reset');
+      supabase
+        .from('teams')
+        .update({ is_ready: false })
+        .eq('id', teamId)
+        .then(({ error }: { error: any }) => {
+          if (error) {
+            console.error('Error resetting team ready status on victory/defeat:', error);
+          } else {
+            console.log('Team ready status reset to false on victory/defeat');
+          }
+        });
+    }
+  }, [gameWon, gameLost, teamId]);
+
   return (
     <div className="w-full max-w-[1600px]">
       {/* Score Display */}

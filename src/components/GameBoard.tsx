@@ -4,6 +4,21 @@ import { toast } from "sonner";
 import { Cell as CellComponent } from "./game/Cell";
 import { ShipPlacement } from "./game/ShipPlacement";
 import type { Cell, ShipDragItem } from "./game/types";
+import type { BoardState, PlacedShip, Position } from "@/types/game";
+
+// Create a logger that only logs in dev environments
+const isDev = process.env.NODE_ENV !== 'production';
+const logger = {
+  log: (...args: any[]) => {
+    if (isDev) {
+      console.log(...args);
+    }
+  },
+  error: (...args: any[]) => {
+    // Always log errors, even in production
+    console.error(...args);
+  }
+};
 
 interface GameBoardProps {
   isCurrentPlayer?: boolean;
@@ -13,6 +28,13 @@ interface GameBoardProps {
   placedShips?: { id: string; positions: { x: number; y: number }[] }[];
   hits?: { x: number; y: number; isHit: boolean }[];
   showShips?: boolean;
+  receivedHits?: Array<{ position: Position; isHit: boolean }>;
+  onPlaceShip?: (ship: PlacedShip) => void;
+  readonly?: boolean;
+  currentShipId?: string;
+  currentShipSize?: number;
+  isOpponentBoard?: boolean;
+  gameStarted?: boolean;
 }
 
 const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({ 
@@ -22,14 +44,21 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
   placementPhase = true,
   placedShips = [],
   hits = [],
-  showShips = true
+  showShips = true,
+  receivedHits = [],
+  onPlaceShip,
+  readonly = false,
+  currentShipId = "",
+  currentShipSize = 0,
+  isOpponentBoard = false,
+  gameStarted = false
 }, ref) => {
   const isMobile = useIsMobile();
   
   useEffect(() => {
-    console.log('GameBoard received hits:', hits);
-    console.log('GameBoard placedShips:', placedShips);
-  }, [hits, placedShips]);
+    logger.log("Received hits:", receivedHits);
+    logger.log("Placed ships:", placedShips);
+  }, [receivedHits, placedShips]);
   
   const board = useMemo(() => {
     const newBoard = Array(5).fill(null).map((_, y) =>
@@ -43,7 +72,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     );
 
     // Place ships first
-    console.log('Placing ships:', placedShips);
+    logger.log('Placing ships:', placedShips);
     placedShips.forEach(ship => {
       ship.positions.forEach(pos => {
         if (newBoard[pos.y] && newBoard[pos.y][pos.x]) {
@@ -55,17 +84,17 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
     });
 
     // Then mark hits and misses
-    console.log('Processing hits:', hits);
+    logger.log('Processing hits:', hits);
     hits.forEach(hit => {
       if (newBoard[hit.y] && newBoard[hit.y][hit.x]) {
         const cell = newBoard[hit.y][hit.x];
         cell.isHit = hit.isHit;
         cell.isMiss = !hit.isHit;
-        console.log(`Setting cell at ${hit.x},${hit.y}:`, cell);
+        logger.log(`Setting cell at ${hit.x},${hit.y}:`, cell);
       }
     });
 
-    console.log('Final board state:', newBoard);
+    logger.log('Final board state:', newBoard);
     return newBoard;
   }, [placedShips, hits]);
 
@@ -89,7 +118,7 @@ const GameBoard = forwardRef<{ resetBoard: () => void }, GameBoardProps>(({
         }))
       );
       boardRef.current = newBoard;
-      console.log('Board reset called, new board state:', newBoard);
+      logger.log('Board reset called, new board state:', newBoard);
     }
   }));
 

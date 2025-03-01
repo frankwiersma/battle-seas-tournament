@@ -80,5 +80,7 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
     gameWon,
     gameLost,
     currentGameId,
+    setGameWon,
+    setGameLost,
   };
 } 

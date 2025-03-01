@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -18,11 +18,23 @@ type Game = {
   game_participants?: GameParticipant[];
 };
 
+type Ship = {
+  positions: Array<{x: number, y: number}>;
+  [key: string]: any;
+};
+
+type BoardState = {
+  ships: Ship[];
+  hits: Array<{x: number, y: number}>;
+  hits_landed?: Array<{x: number, y: number}>;
+  [key: string]: any;
+};
+
 type GameParticipant = {
   id: string;
   game_id: string;
   team_id: string;
-  board_state: any;
+  board_state: BoardState;
   created_at: string;
   team?: Team;
 };
@@ -31,10 +43,68 @@ const Admin = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [supabaseStatus, setSupabaseStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
   const [adminPassword, setAdminPassword] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const refreshIntervalRef = useRef<number | null>(null);
+  const lastRefreshTimeRef = useRef<Date>(new Date());
+  const fetchAttemptsRef = useRef(0);
+  
+  // Check if Supabase is working
+  const checkSupabaseConnection = async () => {
+    try {
+      // Simple ping to check connection
+      const { data, error } = await supabase.from('teams').select('id').limit(1);
+      
+      if (error) {
+        console.error('Supabase connection error:', error);
+        setSupabaseStatus('error');
+        return false;
+      }
+      
+      console.log('Supabase connection successful');
+      setSupabaseStatus('connected');
+      return true;
+    } catch (error) {
+      console.error('Supabase connection exception:', error);
+      setSupabaseStatus('error');
+      return false;
+    }
+  };
+  
+  // Execute connection check on mount
+  useEffect(() => {
+    checkSupabaseConnection();
+  }, []);
+  
+  // Complete reset of app state and forced reload
+  const resetAppState = () => {
+    // Clear all state
+    setTeams([]);
+    setGames([]);
+    setLoading(false);
+    setLoadingError(null);
+    setSupabaseStatus('unknown');
+    
+    // Clear interval if any
+    if (refreshIntervalRef.current) {
+      window.clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
+    }
+    
+    // Reset counters
+    fetchAttemptsRef.current = 0;
+    lastRefreshTimeRef.current = new Date();
+    
+    // Reload page after small delay
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
   
   // Simple admin authentication
   const handleAdminLogin = () => {
@@ -44,6 +114,13 @@ const Admin = () => {
       setAdminPassword(adminPasswordInput);
       localStorage.setItem("battleSeasAdminAuth", "true");
       toast.success("Admin access granted");
+      
+      // Force check connection after login
+      checkSupabaseConnection().then(isConnected => {
+        if (isConnected) {
+          fetchData();
+        }
+      });
     } else {
       toast.error("Invalid admin password");
     }
@@ -56,89 +133,130 @@ const Admin = () => {
     }
   }, []);
   
+  // Simplified fetch data function based on the previous working version
+  const fetchData = async () => {
+    if (!isAuthenticated) return;
+    
+    setLoading(true);
+    try {
+      console.log("Fetching data...");
+      
+      // Fetch teams
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('*')
+        .order('team_letter', { ascending: true });
+        
+      if (teamsError) {
+        throw teamsError;
+      }
+      
+      // Fetch games with participants and related teams
+      const { data: gamesData, error: gamesError } = await supabase
+        .from('games')
+        .select(`
+          *,
+          game_participants (
+            *,
+            team:teams (*)
+          )
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (gamesError) {
+        throw gamesError;
+      }
+      
+      setTeams(teamsData || []);
+      setGames(gamesData || []);
+      setLoadingError(null);
+      fetchAttemptsRef.current = 0;
+      
+      console.log("Data fetched successfully:", teamsData?.length, "teams and", gamesData?.length, "games");
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setLoadingError(error instanceof Error ? error.message : "Unknown error fetching data");
+      toast.error("Failed to load data");
+    } finally {
+      setLoading(false);
+      lastRefreshTimeRef.current = new Date();
+    }
+  };
+  
+  // Set up auto-refresh with safety checks
   useEffect(() => {
     if (!isAuthenticated) return;
     
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        // Fetch teams
-        const { data: teamsData, error: teamsError } = await supabase
-          .from('teams')
-          .select('*')
-          .order('team_letter', { ascending: true });
-          
-        if (teamsError) {
-          throw teamsError;
-        }
-        
-        // Fetch games with participants and related teams
-        const { data: gamesData, error: gamesError } = await supabase
-          .from('games')
-          .select(`
-            *,
-            game_participants (
-              *,
-              team:teams (*)
-            )
-          `)
-          .order('created_at', { ascending: false });
-          
-        if (gamesError) {
-          throw gamesError;
-        }
-        
-        setTeams(teamsData || []);
-        setGames(gamesData || []);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast.error("Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-    
+    // Initial data fetch
     fetchData();
     
-    // Set up realtime subscriptions
-    const teamsSubscription = supabase
-      .channel('admin-teams-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'teams' 
-      }, () => {
+    if (autoRefreshEnabled) {
+      // Setup interval for auto-refresh
+      refreshIntervalRef.current = window.setInterval(() => {
         fetchData();
-      })
-      .subscribe();
-      
-    const gamesSubscription = supabase
-      .channel('admin-games-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'games' 
-      }, () => {
-        fetchData();
-      })
-      .subscribe();
-      
-    const participantsSubscription = supabase
-      .channel('admin-participants-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'game_participants' 
-      }, () => {
-        fetchData();
-      })
-      .subscribe();
+      }, 3000); // Every 3 seconds instead of 1 second
+    }
     
+    // Clean up interval when component unmounts or dependencies change
     return () => {
-      teamsSubscription.unsubscribe();
-      gamesSubscription.unsubscribe();
-      participantsSubscription.unsubscribe();
+      if (refreshIntervalRef.current !== null) {
+        window.clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
     };
+  }, [isAuthenticated, autoRefreshEnabled]);
+  
+  // Set up realtime subscriptions
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const teamsSubscription = supabase
+        .channel('admin-teams-changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'teams' 
+        }, () => {
+          fetchData();
+        })
+        .subscribe();
+        
+      const gamesSubscription = supabase
+        .channel('admin-games-changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'games' 
+        }, () => {
+          fetchData();
+        })
+        .subscribe();
+        
+      const participantsSubscription = supabase
+        .channel('admin-participants-changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'game_participants' 
+        }, () => {
+          fetchData();
+        })
+        .subscribe();
+      
+      return () => {
+        try {
+          teamsSubscription.unsubscribe();
+          gamesSubscription.unsubscribe();
+          participantsSubscription.unsubscribe();
+        } catch (error) {
+          console.error("Error unsubscribing from channels:", error);
+        }
+      };
+    } catch (error) {
+      console.error("Error setting up realtime subscriptions:", error);
+      toast.error("Error setting up realtime updates");
+    }
   }, [isAuthenticated]);
   
   // Admin functions
@@ -436,6 +554,48 @@ const Admin = () => {
     }
   };
   
+  // Debug panel to show in case of issues
+  const renderDebugPanel = () => {
+    return (
+      <div className="bg-white/10 backdrop-blur-md p-6 rounded-lg shadow-lg mt-4">
+        <h2 className="text-2xl font-bold text-white mb-4">Debug Information</h2>
+        
+        <div className="space-y-2 text-white">
+          <p>Supabase Status: <span className={
+            supabaseStatus === 'connected' ? 'text-green-400' :
+            supabaseStatus === 'error' ? 'text-red-400' : 'text-yellow-400'
+          }>{supabaseStatus}</span></p>
+          
+          <p>Auto-refresh: {autoRefreshEnabled ? 'Enabled' : 'Disabled'}</p>
+          <p>Last Refresh: {lastRefreshTimeRef.current.toLocaleTimeString()}</p>
+          <p>Loading State: {loading ? 'Loading' : 'Not Loading'}</p>
+          {loadingError && <p className="text-red-400">Error: {loadingError}</p>}
+          
+          <div className="mt-4">
+            <button
+              onClick={() => checkSupabaseConnection()}
+              className="px-3 py-1 bg-blue-600 text-white rounded mr-2"
+            >
+              Test Connection
+            </button>
+            <button
+              onClick={() => fetchData()}
+              className="px-3 py-1 bg-green-600 text-white rounded mr-2"
+            >
+              Force Fetch
+            </button>
+            <button
+              onClick={resetAppState}
+              className="px-3 py-1 bg-red-600 text-white rounded"
+            >
+              Reset Everything
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-primary to-secondary p-4 flex items-center justify-center">
@@ -469,20 +629,106 @@ const Admin = () => {
       <div className="max-w-[1800px] mx-auto">
         <header className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Battle Seas Admin Panel</h1>
-          <p className="text-white/80">Manage games and teams</p>
-          <button
-            onClick={() => {
-              localStorage.removeItem("battleSeasAdminAuth");
-              setIsAuthenticated(false);
-            }}
-            className="mt-2 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-          >
-            Logout
-          </button>
+          <p className="text-white/80">
+            Manage games and teams
+            <span className="ml-2 text-xs bg-blue-500/30 px-2 py-1 rounded">
+              {autoRefreshEnabled ? 'Auto-refresh: ON' : 'Auto-refresh: OFF'}
+            </span>
+            <span className="ml-2 text-xs bg-blue-500/30 px-2 py-1 rounded">
+              Last updated: {lastRefreshTimeRef.current.toLocaleTimeString()}
+            </span>
+            <span className="ml-2 text-xs bg-blue-500/30 px-2 py-1 rounded">
+              Status: {supabaseStatus}
+            </span>
+          </p>
+          <div className="flex justify-center gap-2 mt-2">
+            <button
+              onClick={() => {
+                localStorage.removeItem("battleSeasAdminAuth");
+                setIsAuthenticated(false);
+                toast.success("Logged out successfully");
+              }}
+              className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+            >
+              Logout
+            </button>
+            <button
+              onClick={() => {
+                setAutoRefreshEnabled(!autoRefreshEnabled);
+                
+                if (!autoRefreshEnabled) {
+                  // Restart refresh interval
+                  refreshIntervalRef.current = window.setInterval(() => {
+                    fetchData();
+                  }, 3000);
+                  toast.success("Auto-refresh enabled");
+                } else {
+                  // Clear interval
+                  if (refreshIntervalRef.current !== null) {
+                    window.clearInterval(refreshIntervalRef.current);
+                    refreshIntervalRef.current = null;
+                  }
+                  toast.success("Auto-refresh disabled");
+                }
+              }}
+              className={`px-3 py-1 text-white rounded transition-colors ${
+                autoRefreshEnabled ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
+              }`}
+            >
+              {autoRefreshEnabled ? 'Disable Auto-refresh' : 'Enable Auto-refresh'}
+            </button>
+            {!autoRefreshEnabled && (
+              <button
+                onClick={() => {
+                  fetchData();
+                }}
+                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Refresh Now
+              </button>
+            )}
+            <button
+              onClick={resetAppState}
+              className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+            >
+              Reset App
+            </button>
+          </div>
         </header>
         
+        {/* Show debug panel if there are errors */}
+        {(loadingError || supabaseStatus === 'error') && renderDebugPanel()}
+        
         {loading ? (
-          <div className="text-center text-white">Loading data...</div>
+          <div className="text-center text-white text-2xl p-8">Loading data...</div>
+        ) : loadingError ? (
+          <div className="text-center p-8">
+            <p className="text-red-400 text-xl mb-4">Error loading data: {loadingError}</p>
+            <button
+              onClick={() => fetchData()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : teams.length === 0 && games.length === 0 ? (
+          <div className="text-center text-white p-8">
+            <p className="mb-4 text-xl">No data available. Either there are no teams or games yet, or there was an error retrieving them.</p>
+            <div className="flex justify-center gap-2">
+              <button
+                onClick={() => fetchData()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Reload Data
+              </button>
+              <button
+                onClick={createNewGame}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+              >
+                Create First Game
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white/10 backdrop-blur-md p-6 rounded-lg shadow-lg">
@@ -533,6 +779,7 @@ const Admin = () => {
               </div>
             </div>
             
+            {/* Games section remains the same */}
             <div className="bg-white/10 backdrop-blur-md p-6 rounded-lg shadow-lg">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-white">Games</h2>
@@ -584,6 +831,71 @@ const Admin = () => {
                       </div>
                     </div>
                     
+                    {/* Game Summary - Battle Stats */}
+                    {game.status === 'in_progress' && game.game_participants && game.game_participants.length >= 2 && (
+                      <div className="mb-3 p-2 bg-white/5 rounded-lg">
+                        <h4 className="text-white text-sm font-semibold mb-1">Battle Summary</h4>
+                        <div className="grid grid-cols-2 gap-x-4 text-xs">
+                          {game.game_participants.map(participant => {
+                            // Calculate scores
+                            const ownShips = participant.board_state?.ships || [];
+                            const hitsTaken = participant.board_state?.hits || [];
+                            const hitsLanded = participant.board_state?.hits_landed || [];
+                            
+                            // Find opponent
+                            const opponent = game.game_participants?.find(p => p.team_id !== participant.team_id);
+                            const opponentShips = opponent?.board_state?.ships || [];
+                            
+                            // Calculate ships sunk
+                            let shipsLost = 0;
+                            ownShips.forEach(ship => {
+                              const shipPositions = ship.positions || [];
+                              const allPositionsHit = shipPositions.length > 0 && shipPositions.every(pos => 
+                                hitsTaken.some(hit => hit.x === pos.x && hit.y === pos.y)
+                              );
+                              if (allPositionsHit) shipsLost++;
+                            });
+                            
+                            // Calculate ships sunk by this team
+                            let shipsSunk = 0;
+                            opponentShips.forEach(ship => {
+                              const shipPositions = ship.positions || [];
+                              const allPositionsHit = shipPositions.length > 0 && shipPositions.every(pos => 
+                                hitsLanded.some(hit => hit.x === pos.x && hit.y === pos.y)
+                              );
+                              if (allPositionsHit) shipsSunk++;
+                            });
+                            
+                            const hitAccuracy = hitsLanded.length > 0 
+                              ? Math.round((hitsLanded.length / (hitsLanded.length + (opponent?.board_state?.ships.flat().length || 0) - shipsSunk)) * 100) 
+                              : 0;
+                              
+                            return (
+                              <div key={participant.id} className="flex flex-col">
+                                <span className="font-medium text-white">Team {participant.team?.team_letter}</span>
+                                <div className="flex justify-between text-white/70">
+                                  <span>Hit Accuracy:</span>
+                                  <span className={hitAccuracy > 50 ? "text-green-400" : "text-yellow-400"}>
+                                    {hitAccuracy}%
+                                  </span>
+                                </div>
+                                <div className="flex justify-between text-white/70">
+                                  <span>Battle Score:</span>
+                                  <span className="text-blue-400">{shipsSunk * 100 + hitsLanded.length * 10}</span>
+                                </div>
+                                <div className="mt-1 w-full bg-gray-700 rounded-full h-1">
+                                  <div 
+                                    className={`h-1 rounded-full ${shipsLost > shipsSunk ? "bg-red-500" : "bg-green-500"}`}
+                                    style={{ width: `${Math.min(100, (shipsSunk / (opponentShips.length || 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="mt-2 space-y-2">
                       <h4 className="text-white font-medium">Participants:</h4>
                       <div className="grid grid-cols-2 gap-2">
@@ -601,6 +913,77 @@ const Admin = () => {
                                   </span>
                                 )}
                               </p>
+                              
+                              {/* Team Score Information */}
+                              <div className="mt-1 pt-1 border-t border-white/10">
+                                <p className="text-white/70 text-xs flex justify-between">
+                                  <span>Hits landed: <span className="text-green-400">{participant.board_state?.hits_landed?.length || 0}</span></span>
+                                  <span>Hits taken: <span className="text-red-400">{participant.board_state?.hits?.length || 0}</span></span>
+                                </p>
+                                <p className="text-white/70 text-xs flex justify-between">
+                                  <span>Ships sunk: <span className="text-green-400">
+                                    {(() => {
+                                      // Calculate ships sunk by this team
+                                      const opponentShips = game.game_participants?.find(p => 
+                                        p.team_id !== participant.team_id
+                                      )?.board_state?.ships || [];
+                                      
+                                      const hitsLanded = participant.board_state?.hits_landed || [];
+                                      
+                                      // Count ships that have all positions hit
+                                      let sunkCount = 0;
+                                      opponentShips.forEach(ship => {
+                                        const shipPositions = ship.positions || [];
+                                        const allPositionsHit = shipPositions.every(pos => 
+                                          hitsLanded.some(hit => 
+                                            hit.x === pos.x && hit.y === pos.y
+                                          )
+                                        );
+                                        if (allPositionsHit && shipPositions.length > 0) {
+                                          sunkCount++;
+                                        }
+                                      });
+                                      
+                                      return sunkCount;
+                                    })()}
+                                  </span></span>
+                                  <span>Ships lost: <span className="text-red-400">
+                                    {(() => {
+                                      // Calculate ships lost by this team
+                                      const ownShips = participant.board_state?.ships || [];
+                                      const hitsTaken = participant.board_state?.hits || [];
+                                      
+                                      // Count ships that have all positions hit
+                                      let lostCount = 0;
+                                      ownShips.forEach(ship => {
+                                        const shipPositions = ship.positions || [];
+                                        const allPositionsHit = shipPositions.every(pos => 
+                                          hitsTaken.some(hit => 
+                                            hit.x === pos.x && hit.y === pos.y
+                                          )
+                                        );
+                                        if (allPositionsHit && shipPositions.length > 0) {
+                                          lostCount++;
+                                        }
+                                      });
+                                      
+                                      return lostCount;
+                                    })()}
+                                  </span></span>
+                                </p>
+                                {game.status === 'in_progress' && (
+                                  <div className="mt-1 w-full bg-gray-700 rounded-full h-1.5">
+                                    <div 
+                                      className="bg-blue-500 h-1.5 rounded-full" 
+                                      style={{ 
+                                        width: `${((participant.board_state?.hits_landed?.length || 0) / 
+                                                  ((participant.board_state?.hits_landed?.length || 0) + 
+                                                  (participant.board_state?.hits?.length || 0) + 1)) * 100}%` 
+                                      }}
+                                    ></div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ))
                         ) : (

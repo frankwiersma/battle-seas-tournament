@@ -33,6 +33,8 @@ const Index = () => {
     setGameStarted,
     scores,
     gameWon,
+    gameLost,
+    loadExistingShips,
   } = useGameState(teamId);
 
   // Add debug logging
@@ -97,17 +99,13 @@ const Index = () => {
         .select('*')
         .eq('team_id', teamId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
 
       if (participantError) {
         console.error('Error fetching participant:', participantError);
         toast.error("Failed to reset game!");
         return;
       }
-
-      // Unsubscribe from game updates temporarily
-      await supabase.channel('game-updates').unsubscribe();
 
       // Reset local state first
       setIsReady(false);
@@ -120,66 +118,85 @@ const Index = () => {
       setIsPlacementPhase(true);
       setGameStarted(false);
 
-      // If there's no active game, we're done
-      if (!participants?.game_id) {
+      if (!participants || participants.length === 0) {
+        console.log('No active game to reset');
         toast.success("Game state reset!");
         return;
       }
 
-      // Perform database updates in parallel
-      const [teamUpdate, participantUpdate, gameUpdate] = await Promise.all([
-        // Reset team ready status
-        supabase
-          .from('teams')
-          .update({ is_ready: false })
-          .eq('id', teamId),
+      const currentParticipant = participants[0];
+      const gameId = currentParticipant.game_id;
 
-        // Reset game participant
-        supabase
-          .from('game_participants')
-          .update({ 
-            board_state: { ships: [], hits: [] },
-            game_id: null  // Also clear the game_id reference
-          })
-          .eq('team_id', teamId)
-          .eq('id', participants.id),
+      console.log('Resetting game for team:', teamId, 'game:', gameId);
 
-        // Update game status
-        supabase
-          .from('games')
-          .update({ 
-            status: 'completed',
-            winner_team_id: null,
-            current_team_id: null
-          })
-          .eq('id', participants.game_id)
-      ]);
+      // Clean up all participants for this team
+      const { error: cleanupError } = await supabase
+        .from('game_participants')
+        .delete()
+        .eq('team_id', teamId);
 
-      // Check for any errors in the updates
-      if (teamUpdate.error || participantUpdate.error || gameUpdate.error) {
-        console.error('Error in updates:', { teamUpdate, participantUpdate, gameUpdate });
-        toast.error("Failed to reset some game data!");
+      if (cleanupError) {
+        console.error('Error cleaning up participants:', cleanupError);
+        toast.error("Failed to clean up game participants!");
         return;
       }
 
-      // Small delay to ensure all updates are processed
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Reset team ready status
+      const { error: teamError } = await supabase
+        .from('teams')
+        .update({ is_ready: false })
+        .eq('id', teamId);
+
+      if (teamError) {
+        console.error('Error resetting team status:', teamError);
+        toast.error("Failed to reset team status!");
+        return;
+      }
+
+      // If there's a game ID, check if any participants are left
+      if (gameId) {
+        // Check if there are any participants left in this game
+        const { data: remainingParticipants, error: checkError } = await supabase
+          .from('game_participants')
+          .select('id')
+          .eq('game_id', gameId);
+
+        if (checkError) {
+          console.error('Error checking remaining participants:', checkError);
+        } else if (!remainingParticipants || remainingParticipants.length === 0) {
+          // No participants left, delete the game
+          console.log('No participants left in game, deleting game:', gameId);
+          const { error: deleteError } = await supabase
+            .from('games')
+            .delete()
+            .eq('id', gameId);
+
+          if (deleteError) {
+            console.error('Error deleting game:', deleteError);
+          }
+        } else {
+          // Update game status to waiting if there are still participants
+          console.log('Participants still in game, updating status to waiting');
+          const { error: updateError } = await supabase
+            .from('games')
+            .update({ 
+              status: 'waiting',
+              winner_team_id: null,
+              current_team_id: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', gameId);
+
+          if (updateError) {
+            console.error('Error updating game status:', updateError);
+          }
+        }
+      }
+
+      // Load fresh ship state
+      await loadExistingShips();
       
       toast.success("Game reset successfully!");
-
-      // Resubscribe to game updates
-      supabase
-        .channel('game-updates')
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'game_participants',
-          },
-          () => loadInitialState()
-        )
-        .subscribe();
 
     } catch (error) {
       console.error('Error resetting game:', error);
@@ -246,6 +263,8 @@ const Index = () => {
                 onCellClick={handleCellClick}
                 scores={scores}
                 gameWon={gameWon}
+                gameLost={gameLost}
+                onRestart={handleResetGame}
               />
             </div>
           )}

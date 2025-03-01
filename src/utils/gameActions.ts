@@ -17,19 +17,37 @@ export async function handleCellClick(
       return;
     }
 
+    // First get our game participant to find the game_id
+    const { data: myParticipants, error: myError } = await supabase
+      .from('game_participants')
+      .select('game_id')
+      .eq('team_id', teamId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (myError || !myParticipants || myParticipants.length === 0) {
+      console.error('Error fetching my participant:', myError);
+      toast.error("Couldn't find your game!");
+      return;
+    }
+
+    const gameId = myParticipants[0].game_id;
+
     // Get opponent's board
-    const { data: participants, error: fetchError } = await supabase
+    const { data: opponents, error: fetchError } = await supabase
       .from('game_participants')
       .select('*')
-      .neq('team_id', teamId)
-      .single();
+      .eq('game_id', gameId)
+      .neq('team_id', teamId);
 
-    if (fetchError || !participants) {
+    if (fetchError || !opponents || opponents.length === 0) {
+      console.error('Error fetching opponent:', fetchError);
       toast.error("Couldn't find opponent's board!");
       return;
     }
 
-    const opponentState = participants.board_state as unknown as BoardState;
+    const opponent = opponents[0];
+    const opponentState = opponent.board_state as unknown as BoardState;
     
     // Check if hit
     const isHit = opponentState.ships.some(ship =>
@@ -61,9 +79,10 @@ export async function handleCellClick(
           hits: newHits  // Store our hits on their board
         }
       })
-      .eq('team_id', participants.team_id);  // Update opponent's board
+      .eq('id', opponent.id);
 
     if (updateError) {
+      console.error('Error updating opponent board:', updateError);
       toast.error("Failed to update game state!");
       return;
     }
@@ -77,13 +96,17 @@ export async function handleCellClick(
 
     // If all ships are sunk (3 ships in total), update game status
     if (sunkShips === 3) {
-      await supabase
+      const { error: gameUpdateError } = await supabase
         .from('games')
         .update({ 
           status: 'completed',
           winner_team_id: teamId 
         })
-        .eq('id', participants.game_id);
+        .eq('id', gameId);
+
+      if (gameUpdateError) {
+        console.error('Error updating game status:', gameUpdateError);
+      }
     }
   } catch (error) {
     console.error('Error updating game state:', error);

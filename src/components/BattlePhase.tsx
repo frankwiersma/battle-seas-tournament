@@ -1,6 +1,7 @@
 import React from "react";
 import GameBoard from "@/components/GameBoard";
 import type { PlacedShip } from "@/types/game";
+import { Button } from "./ui/button";
 
 interface BattlePhaseProps {
   myShips: PlacedShip[];
@@ -16,6 +17,8 @@ interface BattlePhaseProps {
     enemyShipsSunk: number;
   };
   gameWon: boolean;
+  gameLost: boolean;
+  onRestart: () => void;
 }
 
 const BattlePhase: React.FC<BattlePhaseProps> = ({
@@ -32,6 +35,8 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
     enemyShipsSunk: 0
   },
   gameWon = false,
+  gameLost = false,
+  onRestart,
 }) => {
   return (
     <div className="w-full max-w-[1600px]">
@@ -77,12 +82,22 @@ const BattlePhase: React.FC<BattlePhaseProps> = ({
         </div>
       </div>
 
-      {/* Victory Message */}
-      {gameWon && (
+      {/* Victory/Defeat Message */}
+      {(gameWon || gameLost) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white/10 backdrop-blur-md p-8 rounded-xl text-center">
-            <h2 className="text-4xl font-bold text-white mb-4">Your Team Won! 🎉</h2>
-            <p className="text-white/80">All enemy ships have been destroyed!</p>
+            <h2 className={`text-4xl font-bold text-white mb-4 ${gameWon ? 'text-green-400' : 'text-red-400'}`}>
+              {gameWon ? 'Victory! 🎉' : 'Defeat! 💀'}
+            </h2>
+            <p className="text-white/80 mb-6">
+              {gameWon ? 'All enemy ships have been destroyed!' : 'Your fleet has been destroyed!'}
+            </p>
+            <Button 
+              onClick={onRestart}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg text-lg"
+            >
+              Play Again
+            </Button>
           </div>
         </div>
       )}

@@ -25,6 +25,7 @@ export function useGameState(teamId: string | null) {
     setGameStarted,
     scores,
     gameWon,
+    gameLost,
   } = useGamePhase(teamId, placedShips);
 
   useEffect(() => {
@@ -54,5 +55,7 @@ export function useGameState(teamId: string | null) {
     setGameStarted,
     scores,
     gameWon,
+    gameLost,
+    loadExistingShips,
   };
 }

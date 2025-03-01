@@ -48,66 +48,30 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
         },
         async (payload) => {
           console.log('Team status changed:', payload);
-          
-          // First get the current game participant to find the game_id
-          const { data: myParticipant } = await supabase
-            .from('game_participants')
-            .select('game_id, board_state')
-            .eq('team_id', teamId)
-            .single();
-
-          if (!myParticipant?.game_id) return;
-
-          // Get both participants for this specific game
-          const { data: participants } = await supabase
-            .from('game_participants')
-            .select('board_state, team_id')
-            .eq('game_id', myParticipant.game_id);
-          
-          // Check if both teams exist and have placed all their ships
-          const allShipsPlaced = participants?.length === 2 && participants.every(participant => {
-            const boardState = participant.board_state as unknown as BoardState;
-            return boardState?.ships?.length === 3;
-          });
-
-          // Get teams ready status for the participants in this game
-          const { data: teams } = await supabase
-            .from('teams')
-            .select('is_ready, id')
-            .in('id', participants?.map(p => p.team_id) || []);
-          
-          console.log('Current teams status:', teams);
-          console.log('All ships placed:', allShipsPlaced);
-
-          if (teams?.length === 2 && teams.every(team => team.is_ready) && allShipsPlaced) {
-            console.log('Both teams ready and all ships placed, starting game!');
-            // Update game status to in_progress
-            await supabase
-              .from('games')
-              .update({ 
-                status: 'in_progress',
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', myParticipant.game_id);
-
-            setGameStarted(true);
-            setIsPlacementPhase(false);
-          } else if (teams?.every(team => team.is_ready) && !allShipsPlaced) {
-            // If teams are ready but ships aren't placed, reset ready status
-            await supabase
-              .from('teams')
-              .update({ is_ready: false })
-              .in('id', teams.map(t => t.id));
-            
-            toast.error("Cannot start game - all ships must be placed first!");
-          }
+          await checkGameStatus();
         }
       )
       .subscribe();
 
-    // Also check initial state
-    const checkInitialState = async () => {
-      // First get the current game participant
+    const gamesChannel = supabase
+      .channel('games-status')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'games',
+        },
+        async (payload) => {
+          console.log('Game status changed:', payload);
+          await checkGameStatus();
+        }
+      )
+      .subscribe();
+
+    // Helper function to check game status
+    const checkGameStatus = async () => {
+      // First get the current game participant to find the game_id
       const { data: myParticipant } = await supabase
         .from('game_participants')
         .select('game_id, board_state')
@@ -133,16 +97,19 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
         .from('teams')
         .select('is_ready, id')
         .in('id', participants?.map(p => p.team_id) || []);
-      
-      console.log('Initial teams status:', teams);
-      console.log('Initial ships placed status:', allShipsPlaced);
 
-      // Check if game is already in progress
+      // Get game status
       const { data: game } = await supabase
         .from('games')
         .select('status')
         .eq('id', myParticipant.game_id)
         .single();
+      
+      console.log('Current game status:', {
+        teams,
+        allShipsPlaced,
+        gameStatus: game?.status
+      });
 
       if (game?.status === 'in_progress' || 
           (teams?.length === 2 && teams.every(team => team.is_ready) && allShipsPlaced)) {
@@ -152,10 +119,12 @@ export function useGamePhase(teamId: string | null, placedShips: PlacedShip[]) {
       }
     };
 
-    checkInitialState();
+    // Check initial state
+    checkGameStatus();
 
     return () => {
       supabase.removeChannel(teamsChannel);
+      supabase.removeChannel(gamesChannel);
     };
   }, [teamId]);
 
